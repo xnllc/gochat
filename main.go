@@ -24,7 +24,7 @@ import (
 	"github.com/rs/cors"
 )
 
-const Version = "1.3.4"
+const Version = "1.3.5"
 
 // 新增：支持人类可读单位的 ByteSize 类型
 type ByteSize int64
@@ -110,6 +110,21 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
+}
+
+func printLogo() {
+	logo := `
+  _____        _____ _           _
+ / ____|      / ____| |         | |
+| |  __  ___ | |    | |__   __ _| |_ ___
+| | |_ |/ _ \| |    | '_ \ / _` + "`" + ` | __/ __|
+| |__| | (_) | |____| | | | (_| | |_\__ \
+ \_____|\___/ \_____|_| |_|\__,_|\__|___/
+
+         Real-time Chat & File Sharing
+                 Version %s
+`
+	fmt.Printf(logo, Version)
 }
 
 func getLocalIP() string {
@@ -400,6 +415,7 @@ func mustMarshal(v interface{}) []byte {
 }
 
 func main() {
+	printLogo()
 	// 解析命令行参数
 	flag.Var(&maxSize, "max-size", "单文件最大大小，支持 100M、2G、0.5G 或字节数（默认 50M）")
 	flag.Parse()

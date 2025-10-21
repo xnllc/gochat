@@ -16,5 +16,5 @@ GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o dist/go-chat-mac-arm main.go
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/go-chat-linux main.go
 
 # 复制资源
-cp -r public dist/
+# cp -r public dist/
 mkdir dist/uploads

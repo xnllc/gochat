@@ -1,4 +1,4 @@
-# 📄 Go 聊天室项目说明文档
+# 📄 Go 聊天室项目说明文档,局域网发消息发文件测试使用
 
 ---
 
@@ -103,6 +103,20 @@ GOPROXY=https://goproxy.cn,direct go run main.go
 
 > ⚠️ 未经加固的公网部署可能导致服务器被入侵！
 
+### windows exe添加ico
+
+```
+(base) ➜  go-chat git:(master) ✗ go install github.com/akavel/rsrc@latest
+go: downloading github.com/akavel/rsrc v0.10.2
+(base) ➜  go-chat git:(master) ✗ go env GOPATH
+/Users/w/go
+(base) ➜  go-chat git:(master) ✗ ls "$(go env GOPATH)/bin/rsrc"
+/Users/w/go/bin/rsrc
+(base) ➜  go-chat git:(master) ✗ "$(go env GOPATH)/bin/rsrc" -ico gochat.ico -o rsrc.syso
+(base) ➜  go-chat git:(master) ✗ GOOS=windows GOARCH=amd64 go build -o dist/go-chat.exe .
+(base) ➜  go-chat git:(master) ✗
+
+```
 
 
 ```bash
@@ -114,4 +128,6 @@ go run main.go
 
 # Windows
 go-chat.exe -max-size=1.5G -upload-dir="D:\chat\uploads"
+
+
 ```
