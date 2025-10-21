@@ -103,26 +103,15 @@ GOPROXY=https://goproxy.cn,direct go run main.go
 
 > ⚠️ 未经加固的公网部署可能导致服务器被入侵！
 
----
 
-## 🛠️ 常见问题
 
-**Q：无法上传文件？**
-A：检查 `uploads` 目录是否存在且有写权限。
+```bash
+# 默认启动
+go run main.go
 
-**Q：聊天消息不显示？**
-A：打开浏览器开发者工具（F12），查看 Console 是否有 WebSocket 连接错误。
+# 自定义配置
+./go-chat -port=9000 -upload-dir=chat_files -max-size=200M
 
-**Q：想改端口？**
-A：修改 `main.go` 中的 `:3027` 为其他端口（如 `:8080`）。
-
----
-
-## 📬 联系与扩展
-
-- 如需添加用户昵称、消息历史、数据库存储等功能，可进一步扩展。
-- 项目开源，欢迎 Fork 和改进！
-
----
-
-✅ **现在你已拥有一个可运行、可理解、可维护的实时聊天系统！**
+# Windows
+go-chat.exe -max-size=1.5G -upload-dir="D:\chat\uploads"
+```

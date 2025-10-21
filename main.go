@@ -3,6 +3,8 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -13,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,10 +24,48 @@ import (
 	"github.com/rs/cors"
 )
 
-const (
-	Version     = "1.3.3"
-	MaxFileSize = int64(50 << 20) // 50 MB
-	UploadDir   = "uploads"
+const Version = "1.3.4"
+
+// 新增：支持人类可读单位的 ByteSize 类型
+type ByteSize int64
+
+func (b *ByteSize) String() string {
+	return strconv.FormatInt(int64(*b), 10)
+}
+
+func (b *ByteSize) Set(value string) error {
+	if value == "" {
+		return errors.New("size cannot be empty")
+	}
+	value = strings.ToLower(strings.TrimSpace(value))
+
+	var multiplier int64 = 1
+	switch {
+	case strings.HasSuffix(value, "g"):
+		multiplier = 1 << 30
+		value = strings.TrimSuffix(value, "g")
+	case strings.HasSuffix(value, "m"):
+		multiplier = 1 << 20
+		value = strings.TrimSuffix(value, "m")
+	case strings.HasSuffix(value, "k"):
+		multiplier = 1 << 10
+		value = strings.TrimSuffix(value, "k")
+	}
+
+	num, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return fmt.Errorf("invalid size: %s", value)
+	}
+
+	*b = ByteSize(num * float64(multiplier))
+	return nil
+}
+
+// 全局配置变量（由 flag 解析）
+var (
+	port      = flag.Int("port", 3027, "服务监听端口")
+	uploadDir = flag.String("upload-dir", "uploads", "文件上传目录")
+	maxSize   = ByteSize(50 << 20) // 默认 50 MiB
 )
 
 //go:embed public
@@ -135,13 +176,11 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	count := len(clients)
 	clientsMu.Unlock()
 
-	// 发送初始化消息
 	conn.WriteMessage(websocket.TextMessage, mustMarshal(map[string]interface{}{
 		"type":   "init",
 		"userId": userID,
 	}))
 
-	// 广播上线
 	now := time.Now().Format("15:04:05")
 	broadcast(WSMessage{
 		Type: "message",
@@ -219,9 +258,10 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := r.ParseMultipartForm(MaxFileSize)
+	// 使用配置的 maxSize 限制
+	err := r.ParseMultipartForm(int64(maxSize))
 	if err != nil {
-		http.Error(w, "File too large (max 50MB)", http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("File too large (max %.1f MB)", float64(maxSize)/(1<<20)), http.StatusBadRequest)
 		return
 	}
 
@@ -232,8 +272,8 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	if handler.Size > MaxFileSize {
-		http.Error(w, "File too large (max 50MB)", http.StatusBadRequest)
+	if handler.Size > int64(maxSize) {
+		http.Error(w, fmt.Sprintf("File too large (max %.1f MB)", float64(maxSize)/(1<<20)), http.StatusBadRequest)
 		return
 	}
 
@@ -244,7 +284,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	savedName := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-	savePath := filepath.Join(UploadDir, savedName)
+	savePath := filepath.Join(*uploadDir, savedName)
 
 	out, err := os.Create(savePath)
 	if err != nil {
@@ -318,7 +358,7 @@ func deleteFileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filePath := filepath.Join(UploadDir, savedName)
+	filePath := filepath.Join(*uploadDir, savedName)
 	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
 		log.Printf("删除文件失败 %s: %v", filePath, err)
 		http.Error(w, "Server error", http.StatusInternalServerError)
@@ -359,39 +399,28 @@ func mustMarshal(v interface{}) []byte {
 	return b
 }
 
-func ensureUploadDir() {
-	if _, err := os.Stat(UploadDir); os.IsNotExist(err) {
-		os.MkdirAll(UploadDir, 0755)
-	}
-}
-
 func main() {
+	// 解析命令行参数
+	flag.Var(&maxSize, "max-size", "单文件最大大小，支持 100M、2G、0.5G 或字节数（默认 50M）")
+	flag.Parse()
 
-	os.MkdirAll(UploadDir, 0755)
+	// 创建上传目录（使用配置值）
+	if err := os.MkdirAll(*uploadDir, 0755); err != nil {
+		log.Fatalf("❌ 无法创建上传目录 %s: %v", *uploadDir, err)
+	}
+
 	rand.Seed(time.Now().UnixNano())
-	ensureUploadDir()
-
 	localIP := getLocalIP()
-	port := "3027"
-	addr := ":" + port
+	addr := fmt.Sprintf(":%d", *port)
 
-	// 静态文件（含 files.html）
-	// fs := http.FileServer(http.Dir("./public"))
-	// http.Handle("/", http.StripPrefix("/", fs))
-
-	// // 静态文件
-	// http.Handle("/", http.FileServer(http.FS(staticFiles)))
-
-	// 关键：将 staticFiles 的 "public" 子目录作为根
+	// 静态资源
 	publicFS, err := fs.Sub(staticFiles, "public")
 	if err != nil {
 		panic(err)
 	}
-
-	// 现在 / -> public/ 内容
 	http.Handle("/", http.FileServer(http.FS(publicFS)))
 
-	// API
+	// API 路由
 	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/send", sendHandler)
 	http.HandleFunc("/upload", uploadHandler)
@@ -399,19 +428,20 @@ func main() {
 	http.HandleFunc("/api/files/", deleteFileHandler)
 	http.HandleFunc("/info", infoHandler)
 
-	// 文件下载
-	http.Handle("/files/", http.StripPrefix("/files/", http.FileServer(http.Dir(UploadDir))))
+	// 文件下载服务（使用配置的 uploadDir）
+	http.Handle("/files/", http.StripPrefix("/files/", http.FileServer(http.Dir(*uploadDir))))
 
 	handler := cors.AllowAll().Handler(http.DefaultServeMux)
 
 	fmt.Println("🚀 聊天服务已启动")
-	fmt.Printf("   WebSocket: ws://%s:%s/ws\n", localIP, port)
-	fmt.Printf("   发送消息:  POST http://%s:%s/send\n", localIP, port)
-	fmt.Printf("   上传文件:  POST http://%s:%s/upload\n", localIP, port)
-	fmt.Printf("   服务信息:  GET  http://%s:%s/info\n", localIP, port)
-	fmt.Printf("   文件管理:  http://%s:%s/files.html\n", localIP, port)
-	fmt.Printf("   前端页面:   http://%s:%s/\n", localIP, port)
+	fmt.Printf("   WebSocket: ws://%s:%d/ws\n", localIP, *port)
+	fmt.Printf("   发送消息:  POST http://%s:%d/send\n", localIP, *port)
+	fmt.Printf("   上传文件:  POST http://%s:%d/upload\n", localIP, *port)
+	fmt.Printf("   服务信息:  GET  http://%s:%d/info\n", localIP, *port)
+	fmt.Printf("   文件管理:  http://%s:%d/files.html\n", localIP, *port)
+	fmt.Printf("   前端页面:   http://%s:%d/\n", localIP, *port)
 	fmt.Println("   按 Ctrl+C 停止服务")
+	fmt.Printf("   配置: 端口=%d, 上传目录=%s, 最大大小=%.1f MB\n", *port, *uploadDir, float64(maxSize)/(1<<20))
 
 	log.Fatal(http.ListenAndServe(addr, handler))
 }
