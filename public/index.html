@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>💬 实时聊天</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f0f2f5;
+    }
+    #container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-width: 1000px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 16px;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 12px;
+      color: #333;
+      font-size: 1.4em;
+    }
+    #chatBox {
+      flex: 1;
+      overflow-y: auto;
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+    }
+    .message {
+      max-width: 80%;
+      margin-bottom: 16px;
+      position: relative;
+    }
+    .system {
+      color: #888;
+      font-style: italic;
+      text-align: center;
+      font-size: 0.9em;
+      align-self: center;
+      margin-top: 8px;
+      margin-bottom: 8px;
+    }
+
+    /* 自己的消息：靠右 */
+    .self {
+      align-self: flex-end;
+      text-align: right;
+    }
+    .self .bubble {
+      background: #0084ff;
+      color: white;
+      border-radius: 18px 18px 4px 18px;
+    }
+
+    /* 他人消息：靠左 */
+    .other {
+      align-self: flex-start;
+      text-align: left;
+    }
+    .other .bubble {
+      background: #e5e5ea;
+      color: black;
+      border-radius: 18px 18px 18px 4px;
+    }
+
+    .bubble {
+      padding: 12px 16px;
+      word-wrap: break-word;
+      white-space: pre-wrap; /* 保留换行但不强制每个字换行 */
+      line-height: 1.4;
+      display: inline-block;
+      max-width: 100%;
+    }
+
+    .header {
+      font-size: 0.8em;
+      margin-bottom: 4px;
+      font-weight: bold;
+    }
+    .self .header {
+      color: #a0d4ff;
+      text-align: right;
+    }
+    .other .header {
+      color: #666;
+      text-align: left;
+    }
+
+    .time {
+      font-size: 0.7em;
+      color: #999;
+      margin-top: 4px;
+      text-align: right;
+    }
+
+    #inputArea {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    #messageInput {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid #ccc;
+      border-radius: 24px;
+      outline: none;
+      font-size: 16px;
+      min-height: 20px;
+    }
+    button {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 24px;
+      background: #0084ff;
+      color: white;
+      cursor: pointer;
+      font-size: 16px;
+      white-space: nowrap;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+    #uploadBtn {
+      background: #4caf50;
+    }
+    #fileInput {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <h1>💬 局域网临时测试收发信息和文件</h1>
+    <div id="chatBox"></div>
+    <div id="inputArea">
+      <input type="text" id="messageInput" placeholder="输入消息..." autocomplete="off" />
+      <button onclick="sendMessage()">发送</button>
+      <input type="file" id="fileInput" onchange="uploadFile()" />
+      <button id="uploadBtn" onclick="document.getElementById('fileInput').click()">📎 上传</button>
+    </div>
+  </div>
+
+  <script>
+    const serviceUrl = window.location.host;
+    let myUserId = '';
+    let ws = null;
+
+    function connectWebSocket() {
+      ws = new WebSocket(`ws://${serviceUrl}/ws`);
+
+      ws.onopen = () => {
+        console.log('WebSocket 连接成功');
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'init') {
+          myUserId = data.userId;
+          console.log('我的用户ID:', myUserId);
+        } else if (data.type === 'message') {
+          addMessageToUI(data.data);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket 断开，5秒后重连...');
+        setTimeout(connectWebSocket, 5000);
+      };
+
+      ws.onerror = (err) => {
+        console.error('WebSocket 错误:', err);
+      };
+    }
+
+    function addMessageToUI(msg) {
+      const chatBox = document.getElementById('chatBox');
+
+      if (msg.from === 'system') {
+        const div = document.createElement('div');
+        div.className = 'message system';
+        div.textContent = msg.text;
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+        return;
+      }
+
+      const isSelf = msg.from === myUserId;
+      const div = document.createElement('div');
+      div.className = isSelf ? 'message self' : 'message other';
+
+      // 尝试解析是否为文件消息
+      let content;
+      let isFile = false;
+      try {
+        const parsed = JSON.parse(msg.text);
+        if (parsed && parsed.type === 'file') {
+          isFile = true;
+          const { url, name, size } = parsed;
+          const ext = name.split('.').pop()?.toLowerCase() || '';
+
+          const formatSize = (bytes) => {
+            if (bytes < 1024) return bytes + ' B';
+            else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            else return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+          };
+
+          if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
+            const img = document.createElement('img');
+            img.src = `http://${serviceUrl}${url}`;
+            img.alt = name;
+            img.style.maxWidth = '100%';
+            img.style.borderRadius = '8px';
+            img.style.marginTop = '6px';
+            img.style.cursor = 'pointer';
+            img.onclick = () => window.open(img.src, '_blank');
+            content = img;
+          } else {
+            const link = document.createElement('a');
+            link.href = `http://${serviceUrl}${url}`;
+            link.target = '_blank';
+            link.textContent = `📎 ${name} (${formatSize(size)})`;
+            link.style.color = isSelf ? 'white' : '#0084ff';
+            link.style.textDecoration = 'underline';
+            content = link;
+          }
+        }
+      } catch (e) {
+        // 普通文本
+      }
+
+      if (!isFile) {
+        content = document.createTextNode(msg.text);
+      }
+
+      // 消息气泡
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      if (content instanceof Node) {
+        bubble.appendChild(content);
+      } else {
+        bubble.textContent = content;
+      }
+
+      // 用户名
+      const header = document.createElement('div');
+      header.className = 'header';
+      header.textContent = msg.from;
+
+      // 时间
+      const timeEl = document.createElement('div');
+      timeEl.className = 'time';
+      timeEl.textContent = msg.time;
+
+      div.appendChild(header);
+      div.appendChild(bubble);
+      div.appendChild(timeEl);
+
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById('messageInput');
+      const text = input.value.trim();
+      if (!text || !myUserId) return;
+
+      await fetch(`http://${serviceUrl}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, from: myUserId })
+      });
+
+      input.value = '';
+    }
+
+    async function uploadFile() {
+      const fileInput = document.getElementById('fileInput');
+      const file = fileInput.files[0];
+      if (!file || !myUserId) return;
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch(`http://${serviceUrl}/upload`, {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!res.ok) {
+          const err = await res.text();
+          alert('上传失败: ' + err);
+          return;
+        }
+
+        const response = await res.json();
+
+        await fetch(`http://${serviceUrl}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: JSON.stringify({
+              type: 'file',
+              url: response.fileUrl,
+              name: response.fileName,
+              size: response.fileSize
+            }),
+            from: myUserId
+          })
+        });
+
+        fileInput.value = '';
+      } catch (e) {
+        console.error(e);
+        alert('上传出错');
+      }
+    }
+
+    document.getElementById('messageInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    connectWebSocket();
+  </script>
+</body>
+</html>
