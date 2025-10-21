@@ -15,12 +15,13 @@
 
 下载go-chat.exe 双击打开运行即可
 
-```
+
 ## 示例截图
 
-![示例图 1](./public/img1.png)
-![示例图 2](./public/img2.png)
-```
+
+<img src="./public/img1.png" alt="示例图 1" style="width:100%; max-width: 600px;">
+<img src="./public/img2.png" alt="示例图 2" style="width:100%; max-width: 600px;">
+
 
 
 ## 📁 项目结构
