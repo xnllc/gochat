@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <link rel="icon" href="/public/gochat.ico" type="image/x-icon">
+  <link rel="icon" href="/gochat.ico" type="image/x-icon">
   <title>💬 实时聊天</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -13,6 +13,39 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: #f0f2f5;
     }
+    /* 右上角设置按钮 */
+    #settingsBtn { position: fixed; top: 12px; right: 12px; z-index: 20; background: #fff; border: 1px solid #ddd; border-radius: 50%; width: 40px; height: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    #settingsBtn:hover { background: #f7f7f7; }
+    /* 设置弹窗 */
+    #settingsModal { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: none; align-items: center; justify-content: center; z-index: 30; }
+    #settingsModal .panel { background: #fff; width: 520px; max-width: calc(100% - 40px); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; }
+    #settingsModal .panel .hd { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #eee; font-weight: 600; }
+    #settingsModal .panel .bd { padding: 16px; max-height: 70vh; overflow: auto; }
+    .test-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .test-grid button { padding: 10px 12px; border-radius: 8px; border: 1px solid #ddd; background: #fafafa; color: #333; cursor: pointer; }
+    .test-grid button:hover { background: #f0f0f0; }
+    #settingsModal .panel { color:#333; }
+    #settingsModal .panel .hd { color:#333; }
+    .muted { color:#999; font-size: 12px; }
+
+    .progress {
+      height: 6px;
+      background: rgba(0,0,0,0.1);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .progress > .bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #4caf50, #81c784);
+      transition: width 0.1s ease;
+    }
+    .actions-row { display:flex; gap:8px; align-items:center; margin-top:6px; }
+    .small { font-size:12px; color:#666; }
+    .muted { color:#999; }
+    .btn-sm { padding:6px 10px; border-radius:12px; font-size:12px; }
+    .disabled { opacity:0.5; pointer-events:none; }
     #container {
       display: flex;
       flex-direction: column;
@@ -143,13 +176,70 @@
 </head>
 <body>
   <div id="container">
+    <button id="settingsBtn" title="设置与测试" aria-label="设置">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .66.26 1.3.73 1.77.47.47 1.11.73 1.77.73H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
+    <div id="settingsModal">
+      <div class="panel">
+        <div class="hd">
+          <span>设置与测试</span>
+          <button id="settingsClose" class="btn-sm">关闭</button>
+        </div>
+        <div class="bd">
+          <div class="muted" style="margin-bottom:8px;">快速测试常用接口与通道</div>
+          <div style="margin-bottom:10px; display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="lanModeSwitch" />
+            <label for="lanModeSwitch">启用 LAN 优化模式（仅使用本地局域网候选，跳过公网 STUN）</label>
+          </div>
+          <div class="test-grid">
+            <button id="testSendText">发送文本(Hello)</button>
+            <button id="testWS">测试 WebSocket</button>
+            <button id="testP2PPlaceholder">群发占位(P2P)</button>
+            <button id="testFilesList">获取文件列表</button>
+            <button id="testUploadSmall">上传小文件</button>
+            <button id="testSignal">发送信令(ping)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <h1>💬 局域网临时测试收发信息和文件</h1>
     <div id="chatBox"></div>
     <div id="inputArea">
       <input type="text" id="messageInput" placeholder="输入消息..." autocomplete="off" />
-      <button onclick="sendMessage()">发送</button>
-      <input type="file" id="fileInput" onchange="uploadFile()" />
-      <button id="uploadBtn" onclick="document.getElementById('fileInput').click()">📎 上传</button>
+      <button id="sendBtn">发送</button>
+
+      <input type="file" id="fileInput" style="display:none" />
+      <input type="file" id="fileInputServer" style="display:none" />
+      <input type="file" id="fileInputDirect" style="display:none" />
+
+      <button id="fileSendBtn">📎 文件发送</button>
+    </div>
+
+    <!-- 文件发送选项菜单 -->
+    <div id="fileSendMenu" style="display:none; position:absolute; right:16px; bottom:80px; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.12); padding:12px; min-width:260px; z-index:10;">
+      <div style="font-weight:600; margin-bottom:8px;">选择发送方式</div>
+      <label style="display:block; margin:6px 0;">
+        <input type="radio" name="sendMode" value="p2p" checked /> P2P 群里占位，点击后再传
+      </label>
+      <label style="display:block; margin:6px 0;">
+        <input type="radio" name="sendMode" value="direct" /> 直传给选中用户
+      </label>
+      <div id="menuTargetWrap" style="margin-left:18px; margin-top:4px; display:none;">
+        <select id="menuTargetUser" style="padding:6px 8px; border-radius:6px; border:1px solid #ccc; min-width:160px">
+          <option value="">请选择用户</option>
+        </select>
+      </div>
+      <label style="display:block; margin:6px 0;">
+        <input type="radio" name="sendMode" value="server" /> 上传到服务器并群发链接
+      </label>
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">
+        <button id="menuCancel" class="btn-sm" style="background:#eee;color:#333;">取消</button>
+        <button id="menuConfirm" class="btn-sm" style="background:#0084ff; color:#fff;">确定</button>
+      </div>
     </div>
   </div>
 
@@ -157,32 +247,310 @@
     const serviceUrl = window.location.host;
     let myUserId = '';
     let ws = null;
+    let peerConnections = {}; // userId -> RTCPeerConnection
+    let dataChannels = {};    // userId -> RTCDataChannel
+    let onlineUsers = [];     // 在线用户列表（来自服务端广播）
 
     function connectWebSocket() {
       ws = new WebSocket(`ws://${serviceUrl}/ws`);
 
       ws.onopen = () => {
-        console.log('WebSocket 连接成功');
+        console.log('[ws] open');
       };
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.type === 'init') {
           myUserId = data.userId;
-          console.log('我的用户ID:', myUserId);
+          console.log('[ws:init] myUserId', myUserId);
         } else if (data.type === 'message') {
           addMessageToUI(data.data);
+        } else if (data.type === 'users') {
+          // 系统广播在线用户列表（逗号分隔）
+          onlineUsers = data.data.text ? data.data.text.split(',').filter(u => u && u !== myUserId) : [];
+          console.log('[ws:users]', onlineUsers);
+          refreshTargetUser();
+        } else if (data.type === 'signal') {
+          // 收到来自服务端转发的信令
+          const s = data.data; // { type, from, to, payload }
+          handleSignalFromPeer(s);
         }
       };
 
       ws.onclose = () => {
-        console.log('WebSocket 断开，5秒后重连...');
+        console.warn('[ws] close, reconnect in 5s');
         setTimeout(connectWebSocket, 5000);
       };
 
       ws.onerror = (err) => {
-        console.error('WebSocket 错误:', err);
+        console.error('[ws] error', err);
       };
+    }
+
+    let lanMode = true; // 局域网直连模式，优先用本地候选，绕过公网 STUN
+    async function createConnection(toUserId) {
+      if (peerConnections[toUserId]) { console.log('[pc] reuse', toUserId); return peerConnections[toUserId]; }
+      console.log('[pc] create', toUserId, 'lanMode=', lanMode);
+      const config = lanMode
+        ? { iceServers: [], bundlePolicy: 'max-bundle' }
+        : { iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }], bundlePolicy: 'max-bundle' };
+      const pc = new RTCPeerConnection(config);
+
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          const candStr = e.candidate.candidate || '';
+          const isHost = /\btyp host\b/.test(candStr);
+          const type = (candStr.match(/\btyp (host|srflx|relay)\b/)||[])[1] || 'unknown';
+          console.log('[ice:cand:local]', toUserId, type, candStr);
+          if (!lanMode || isHost) {
+            sendSignal({ type: 'candidate', to: toUserId, payload: { candidate: e.candidate } });
+          } else {
+            console.log('[ice:cand:drop]', 'non-host in LAN mode');
+          }
+        }
+      };
+
+      pc.ondatachannel = (event) => {
+        const channel = event.channel;
+        console.log('[pc:ondatachannel]', toUserId, channel.label);
+        registerDataChannel(toUserId, channel);
+      };
+      pc.oniceconnectionstatechange = () => { console.log('[pc:ice]', toUserId, pc.iceConnectionState); };
+      pc.onconnectionstatechange = () => { console.log('[pc:state]', toUserId, pc.connectionState); };
+
+      peerConnections[toUserId] = pc;
+      return pc;
+    }
+
+    async function waitForChannelOpen(channel, timeout = 15000) {
+      if (!channel) throw new Error('DataChannel missing');
+      if (channel.readyState === 'open') return;
+      console.log('[dc] wait open...', channel.readyState);
+      await new Promise((resolve, reject) => {
+        const start = Date.now();
+        const onOpen = () => { cleanup(); resolve(); };
+        const check = () => {
+          if (channel.readyState === 'open') { cleanup(); resolve(); return; }
+          if (channel.readyState === 'closing' || channel.readyState === 'closed') { cleanup(); reject(new Error('DataChannel closed before open')); return; }
+          if (Date.now() - start > timeout) { cleanup(); reject(new Error('DataChannel open timeout')); return; }
+          setTimeout(check, 50);
+        };
+        const cleanup = () => { channel.removeEventListener('open', onOpen); };
+        channel.addEventListener('open', onOpen);
+        check();
+      });
+      console.log('[dc] opened');
+    }
+
+    async function waitForIceConnected(pc, timeout = 15000) {
+      if (!pc) throw new Error('PeerConnection missing');
+      const ok = s => s === 'connected' || s === 'completed';
+      if (ok(pc.iceConnectionState)) return;
+      console.log('[ice] wait...', pc.iceConnectionState);
+      await new Promise((resolve, reject) => {
+        const start = Date.now();
+        const onChange = () => {
+          const s = pc.iceConnectionState;
+          console.log('[ice] state', s);
+          if (ok(s)) { cleanup(); resolve(); }
+          else if (['failed','disconnected','closed'].includes(s)) { cleanup(); reject(new Error('ICE ' + s)); }
+        };
+        const timer = setInterval(() => {
+          if (ok(pc.iceConnectionState)) { cleanup(); resolve(); }
+          else if (Date.now() - start > timeout) { cleanup(); reject(new Error('ICE timeout')); }
+        }, 200);
+        const cleanup = () => { clearInterval(timer); pc.removeEventListener('iceconnectionstatechange', onChange); };
+        pc.addEventListener('iceconnectionstatechange', onChange);
+      });
+      console.log('[ice] connected');
+    }
+
+    function registerDataChannel(toUserId, channel) {
+      dataChannels[toUserId] = channel;
+      channel.onopen = () => { console.log('[dc] open', toUserId); };
+      channel.onclose = () => { console.log('[dc] close', toUserId); };
+      channel.onerror = (e) => { console.error('[dc] error', toUserId, e); };
+
+      let receiving = { name: '', size: 0, mime: 'application/octet-stream', chunks: [], received: 0 };
+
+      channel.binaryType = 'arraybuffer';
+      channel.onmessage = async (e) => { console.log('[DC:onmessage]', toUserId, typeof e.data);
+        if (typeof e.data === 'string') {
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'text') {
+              addMessageToUI({ text: msg.text, from: toUserId, time: new Date().toLocaleTimeString() });
+            } else if (msg.type === 'file-meta') {
+              receiving = { name: msg.name, size: msg.size, mime: msg.mime || 'application/octet-stream', chunks: [], received: 0 };
+            } else if (msg.type === 'file-end') {
+              const blob = new Blob(receiving.chunks, { type: receiving.mime });
+              const url = URL.createObjectURL(blob);
+              const ext = receiving.name.split('.').pop()?.toLowerCase() || '';
+              const isImage = ['jpg','jpeg','png','gif','webp','bmp'].includes(ext);
+              const node = isImage
+                ? (() => { const img = document.createElement('img'); img.src = url; img.alt = receiving.name; img.style.maxWidth = '100%'; img.style.borderRadius = '8px'; img.style.marginTop = '6px'; img.onclick = () => window.open(url, '_blank'); return img; })()
+                : (() => { const a = document.createElement('a'); a.href = url; a.download = receiving.name; a.textContent = `📎 ${receiving.name} (${(receiving.size/1024).toFixed(1)} KB)`; return a; })();
+              addMessageToUI({ from: toUserId, time: new Date().toLocaleTimeString(), contentNode: node });
+              console.log('[recv:file-end]', { from: toUserId, name: receiving.name });
+              receiving = { name: '', size: 0, mime: 'application/octet-stream', chunks: [], received: 0 };
+            } else if (msg.type === 'file-meta') {
+              console.log('[recv:file-meta]', { from: toUserId, name: msg.name, size: msg.size });
+              // 接收端显示进度条（显示发送者）
+              const container = document.createElement('div');
+              container.className = 'message other';
+              const prog = ensureProgress(container, `recv-${toUserId}-${msg.name}`, `来自 ${toUserId}：${msg.name}`);
+              document.getElementById('chatBox').appendChild(container);
+            } else if (msg.type === 'p2p-file-request') {
+              // 只有发送者会处理该请求：查找本地 pendingFiles，启动分片发送，带进度
+              const fileId = msg.fileId;
+              console.log('[p2p-file-request] from', toUserId, fileId);
+              const file = window.pendingFiles ? window.pendingFiles[fileId] : null;
+              if (!file) { console.warn('[p2p] file not found in sender cache', fileId); return; }
+              // 在自己的消息区显示进度条（显示目标用户）
+              const container = document.createElement('div');
+              container.className = 'message self';
+              const prog = ensureProgress(container, `send-${toUserId}-${fileId}`, `发送给 ${toUserId}：${file.name}`);
+              document.getElementById('chatBox').appendChild(container);
+              // 等待 ICE 与通道打开再发送
+              await waitForIceConnected(peerConnections[toUserId]).catch(e => { console.warn('[ice] not ready', e); });
+              await waitForChannelOpen(channel);
+              console.log('[send:file-meta]', { to: toUserId, name: file.name, size: file.size });
+              // 发送元信息（再次校验通道状态）
+              if (channel.readyState !== 'open') { throw new Error('DataChannel not open before meta'); }
+              try { channel.send(JSON.stringify({ type: 'file-meta', name: file.name, size: file.size, mime: file.type || 'application/octet-stream' })); }
+              catch (e) { throw new Error('send meta failed: ' + e.message); }
+              // 分片+阈值限流（小分片 + bufferedamountlow）
+              const reader = file.stream().getReader();
+              let sent = 0; let canceled = false;
+              const onClose = () => { canceled = true; prog.info.textContent = `连接已关闭：${file.name}`; };
+              channel.addEventListener('close', onClose);
+              prog.cancelBtn.onclick = () => { canceled = true; try { reader.cancel(); } catch {} prog.info.textContent = `已取消：${file.name}`; prog.meta && (prog.meta.textContent=''); };
+              const SLICE = 64 * 1024; // 64KB 小分片
+              channel.bufferedAmountLowThreshold = 256 * 1024; // 256KB 低水位
+              const waitBufferedLow = async () => {
+                if (channel.bufferedAmount <= channel.bufferedAmountLowThreshold) return;
+                await new Promise(resolve => {
+                  const h = () => { channel.removeEventListener('bufferedamountlow', h); resolve(); };
+                  channel.addEventListener('bufferedamountlow', h);
+                });
+              };
+              try {
+                let lastT = Date.now(), lastB = 0;
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done || canceled) break;
+                  if (channel.readyState !== 'open') { throw new Error('DataChannel not open during send'); }
+                  const chunkView = value instanceof Uint8Array ? value : new Uint8Array(value);
+                  for (let off = 0; off < chunkView.byteLength; off += SLICE) {
+                    if (canceled) break;
+                    if (channel.readyState !== 'open') { throw new Error('DataChannel not open during send'); }
+                    const piece = chunkView.subarray(off, Math.min(off + SLICE, chunkView.byteLength));
+                    await waitBufferedLow();
+                    channel.send(piece);
+                    sent += piece.byteLength;
+                    const now = Date.now();
+                    if (now - lastT >= 500) {
+                      const db = sent - lastB; const dt = (now - lastT)/1000;
+                      const speed = db/dt; const remain = Math.max(0, file.size - sent);
+                      const eta = speed>0 ? remain/speed : 0;
+                      prog.meta && (prog.meta.textContent = `${(speed/1024).toFixed(1)} KB/s，剩余约 ${eta.toFixed(1)} s`);
+                      lastT = now; lastB = sent;
+                    }
+                    const pct = Math.min(100, Math.round((sent / file.size) * 100));
+                    prog.bar.style.width = pct + '%';
+                    if (sent % (512*1024) < SLICE) console.log('[send:progress]', toUserId, pct + '%');
+                  }
+                }
+                if (!canceled) {
+                  await waitBufferedLow();
+                  channel.send(JSON.stringify({ type: 'file-end' }));
+                  console.log('[send:file-end]', { to: toUserId, fileId });
+                  prog.info.textContent = `发送给 ${toUserId}：${file.name}（完成）`;
+                  prog.bar.style.width = '100%';
+                }
+              } catch (err) {
+                console.error('[p2p:send:error]', err);
+                alert('P2P 发送失败：' + err.message);
+              }
+            }
+          } catch {}
+        } else {
+          receiving.chunks.push(e.data);
+          receiving.received += e.data.byteLength || 0;
+          if (receiving.received % (512*1024) < 65536) console.log('[recv:progress]', toUserId, Math.round((receiving.received/receiving.size)*100)+'%');
+          const key = `recv-${toUserId}-${receiving.name}`;
+          if (progressMap[key]) {
+            const pct = receiving.size ? Math.min(100, Math.round((receiving.received / receiving.size) * 100)) : 0;
+            progressMap[key].bar.style.width = pct + '%';
+          }
+        }
+      };
+    }
+
+    async function sendSignal(s) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) { console.warn('[signal] ws not open'); return; }
+      const payload = { type: 'signal', data: { ...s, from: myUserId } };
+      console.log('[signal:send]', payload);
+      ws.send(JSON.stringify(payload));
+    }
+
+    async function connectToUser(toUserId) {
+      console.log('[connect] to', toUserId);
+      const pc = await createConnection(toUserId);
+      const channel = pc.createDataChannel('chat');
+      console.log('[dc:create]', toUserId, channel.label);
+      registerDataChannel(toUserId, channel);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      sendSignal({ type: 'offer', to: toUserId, payload: { sdp: offer } });
+    }
+
+    async function handleSignalFromPeer(s) {
+      const { type, from, payload } = s;
+      console.log('[signal:recv]', type, 'from', from);
+      const pc = await createConnection(from);
+      if (type === 'offer') {
+        await pc.setRemoteDescription(payload.sdp);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignal({ type: 'answer', to: from, payload: { sdp: answer } });
+      } else if (type === 'answer') {
+        await pc.setRemoteDescription(payload.sdp);
+      } else if (type === 'candidate') {
+        try { await pc.addIceCandidate(payload.candidate); } catch (e) { console.error(e); }
+      }
+    }
+
+    const progressMap = {};
+
+    function ensureProgress(div, key, label) {
+      if (!progressMap[key]) {
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        const info = document.createElement('div');
+        info.textContent = label;
+        const meta = document.createElement('div');
+        meta.className = 'small muted';
+        meta.textContent = '';
+        const progress = document.createElement('div');
+        progress.className = 'progress';
+        const bar = document.createElement('div');
+        bar.className = 'bar';
+        progress.appendChild(bar);
+        const actions = document.createElement('div');
+        actions.className = 'actions-row';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn-sm';
+        cancelBtn.textContent = '取消';
+        actions.appendChild(cancelBtn);
+        bubble.appendChild(info);
+        bubble.appendChild(meta);
+        bubble.appendChild(progress);
+        bubble.appendChild(actions);
+        div.appendChild(bubble);
+        progressMap[key] = { bar, info, meta, container: bubble, cancelBtn };
+      }
+      return progressMap[key];
     }
 
     function addMessageToUI(msg) {
@@ -201,7 +569,26 @@
       const div = document.createElement('div');
       div.className = isSelf ? 'message self' : 'message other';
 
-      // 尝试解析是否为文件消息
+      // 若提供直接的内容节点（用于 P2P 文件展示）
+      if (msg.contentNode) {
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        bubble.appendChild(msg.contentNode);
+        const header = document.createElement('div');
+        header.className = 'header';
+        header.textContent = msg.from;
+        const timeEl = document.createElement('div');
+        timeEl.className = 'time';
+        timeEl.textContent = msg.time;
+        div.appendChild(header);
+        div.appendChild(bubble);
+        div.appendChild(timeEl);
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+        return;
+      }
+
+      // 尝试解析是否为服务器文件消息 或 P2P占位消息
       let content;
       let isFile = false;
       try {
@@ -236,12 +623,39 @@
             link.style.textDecoration = 'underline';
             content = link;
           }
+        } else if (parsed && parsed.type === 'p2p-file') {
+          // 群里占位条目：点击再建链拉取 + 显示发送者信息
+          const { fileId, name, size, from } = parsed;
+          const wrap = document.createElement('div');
+          const a = document.createElement('a');
+          a.href = '#';
+          a.textContent = `📎 ${name} (${(size/1024).toFixed(1)} KB) — 点击下载`;
+          a.onclick = (ev) => {
+            ev.preventDefault();
+            // 仅在“自己是发送者”时检查本地缓存；其他用户应始终发起请求给发送者
+            if (from === myUserId) {
+              if (!window.pendingFiles || !window.pendingFiles[fileId]) {
+                alert('文件已失效，发送者端未缓存该文件');
+                return;
+              }
+            }
+            requestFile(from, fileId);
+          };
+          a.style.color = isSelf ? 'white' : '#0084ff';
+          a.style.textDecoration = 'underline';
+          const meta = document.createElement('div');
+          meta.style.fontSize = '12px';
+          meta.style.color = isSelf ? '#a0d4ff' : '#666';
+          meta.textContent = `来自用户：${from}`;
+          wrap.appendChild(a);
+          wrap.appendChild(meta);
+          content = wrap;
         }
       } catch (e) {
         // 普通文本
       }
 
-      if (!isFile) {
+      if (!isFile && !content) {
         content = document.createTextNode(msg.text);
       }
 
@@ -274,67 +688,347 @@
 
     async function sendMessage() {
       const input = document.getElementById('messageInput');
+      const btn = document.getElementById('sendBtn');
       const text = input.value.trim();
-      if (!text || !myUserId) return;
+      if (!text) return;
+      if (!myUserId) { console.warn('[send] myUserId 未初始化，稍后重试'); alert('正在连接服务器，请稍后再试'); return; }
 
+      try {
+        btn.disabled = true; btn.classList.add('disabled');
+        const res = await fetch(`http://${serviceUrl}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, from: myUserId })
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        input.value = '';
+      } catch (err) {
+        console.error('[send:error]', err);
+        alert('发送失败，请重试');
+      } finally {
+        btn.disabled = false; btn.classList.remove('disabled');
+      }
+    }
+
+    // 显式挂载到 window，确保内联 onclick 可访问
+    window.sendMessage = sendMessage;
+
+    function pickP2PUpload() {
+      const input = document.getElementById('fileInput');
+      input.onchange = () => uploadFileP2P();
+      input.click();
+    }
+    window.pickP2PUpload = pickP2PUpload;
+
+    function pickServerUpload() {
+      const input = document.getElementById('fileInputServer');
+      input.onchange = () => uploadFileServer();
+      input.click();
+    }
+    window.pickServerUpload = pickServerUpload;
+
+    // 直传给指定用户（立即建链并发送）
+    async function uploadFileDirect(targetUserId) {
+      const input = document.getElementById('fileInputDirect');
+      const file = input.files[0];
+      if (!file || !myUserId) return;
+      await connectToUser(targetUserId);
+      await new Promise(res => { const check=()=>{ if (dataChannels[targetUserId]) res(); else setTimeout(check,200)}; check(); });
+      const channel = dataChannels[targetUserId];
+      try {
+        await waitForIceConnected(peerConnections[targetUserId]);
+        await waitForChannelOpen(channel);
+      } catch (e) { console.error('[direct] open failed', e); alert('P2P 连接未就绪，请稍后再试'); return; }
+      const container = document.createElement('div');
+      container.className = 'message self';
+      const prog = ensureProgress(container, `send-${targetUserId}-${Date.now()}`, `发送给 ${targetUserId}：${file.name}`);
+      document.getElementById('chatBox').appendChild(container);
+      if (channel.readyState !== 'open') { alert('P2P 通道未就绪'); return; }
+      try { channel.send(JSON.stringify({ type: 'file-meta', name: file.name, size: file.size, mime: file.type || 'application/octet-stream' })); } catch (e) { console.error('[direct] meta send failed', e); alert('P2P 元信息发送失败'); return; }
+      // 分片+阈值限流（小分片 + bufferedamountlow）
+      const reader = file.stream().getReader();
+      let sent = 0; const start = Date.now(); let lastT = start, lastB = 0; let canceled = false;
+      const onClose = () => { canceled = true; prog.info.textContent = `连接已关闭：${file.name}`; };
+      channel.addEventListener('close', onClose);
+      const SLICE = 64 * 1024; // 64KB
+      channel.bufferedAmountLowThreshold = 256 * 1024;
+      const waitBufferedLow = async () => {
+        if (channel.bufferedAmount <= channel.bufferedAmountLowThreshold) return;
+        await new Promise(resolve => {
+          const h = () => { channel.removeEventListener('bufferedamountlow', h); resolve(); };
+          channel.addEventListener('bufferedamountlow', h);
+        });
+      };
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done || canceled) break;
+        if (channel.readyState !== 'open') { console.warn('[direct] channel not open during send'); break; }
+        const chunkView = value instanceof Uint8Array ? value : new Uint8Array(value);
+        for (let off = 0; off < chunkView.byteLength; off += SLICE) {
+          if (canceled) break;
+          if (channel.readyState !== 'open') { console.warn('[direct] channel not open during send'); canceled = true; break; }
+          const piece = chunkView.subarray(off, Math.min(off + SLICE, chunkView.byteLength));
+          await waitBufferedLow();
+          try { channel.send(piece); } catch (e) { console.error('[direct] chunk send failed', e); canceled = true; break; }
+          sent += piece.byteLength;
+          const now = Date.now();
+          const dt = (now - lastT)/1000; const db = sent - lastB;
+          if (dt >= 0.5) {
+            const speed = db/dt; const remain = Math.max(0, file.size - sent);
+            const eta = speed>0 ? remain/speed : 0;
+            prog.meta.textContent = `${(speed/1024).toFixed(1)} KB/s，剩余约 ${eta.toFixed(1)} s`;
+            lastT = now; lastB = sent;
+          }
+          prog.bar.style.width = Math.round((sent/file.size)*100) + '%';
+        }
+      }
+      if (!canceled && channel.readyState === 'open') {
+        await waitBufferedLow();
+        try { channel.send(JSON.stringify({ type: 'file-end' })); } catch {}
+        prog.info.textContent = `发送给 ${targetUserId}：${file.name}（完成）`;
+        prog.bar.style.width = '100%';
+      }
+      input.value = '';
+      // 取消支持：点击取消按钮中断读取
+      prog.cancelBtn.onclick = () => {
+        try { reader.cancel(); } catch {}
+        prog.info.textContent = `已取消：${file.name}`;
+        prog.meta.textContent = '';
+      };
+    }
+
+    // 改为仅广播文件元信息，占位；点击时再建立连接传输（P2P）
+    async function uploadFileP2P() {
+      const fileInput = document.getElementById('fileInput');
+      const file = fileInput.files[0];
+      if (!file || !myUserId) return;
+
+      const fileId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      window.pendingFiles = window.pendingFiles || {};
+      window.pendingFiles[fileId] = file; // 发送者本地缓存
+
+      // 向群里广播占位消息
       await fetch(`http://${serviceUrl}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, from: myUserId })
+        body: JSON.stringify({
+          message: JSON.stringify({ type: 'p2p-file', fileId, name: file.name, size: file.size, from: myUserId }),
+          from: myUserId
+        })
+      });
+
+      // 自己本地显示一条占位（点击也可以自我下载）
+      addMessageToUI({
+        from: myUserId,
+        time: new Date().toLocaleTimeString(),
+        text: JSON.stringify({ type: 'p2p-file', fileId, name: file.name, size: file.size, from: myUserId })
+      });
+
+      fileInput.value = '';
+    }
+
+    // 上传到服务器（带进度条）
+    async function uploadFileServer() {
+      const input = document.getElementById('fileInputServer');
+      const file = input.files[0];
+      if (!file || !myUserId) return;
+
+      // 在自己的消息区插入进度条
+      const container = document.createElement('div');
+      container.className = 'message self';
+      const prog = ensureProgress(container, `server-${Date.now()}-${file.name}`, `上传到服务器：${file.name}`);
+      document.getElementById('chatBox').appendChild(container);
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // 使用 XMLHttpRequest 以便追踪上传进度
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `http://${serviceUrl}/upload`);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.min(100, Math.round((e.loaded / e.total) * 100));
+            prog.bar.style.width = pct + '%';
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText)); else reject(new Error(xhr.statusText));
+        };
+        xhr.onerror = reject;
+        xhr.send(formData);
+      }).then(async () => {
+        // 上传成功后，广播文件链接消息
+        const res = await fetch(`http://${serviceUrl}/api/files`);
+        const list = await res.json();
+        const found = list.find(x => x.name === file.name) || null;
+        if (found) {
+          await fetch(`http://${serviceUrl}/send`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: JSON.stringify({ type: 'file', url: found.url, name: found.name, size: found.size }),
+              from: myUserId
+            })
+          });
+          prog.info.textContent = `上传到服务器：${file.name}（完成）`;
+          prog.bar.style.width = '100%';
+        } else {
+          prog.info.textContent = `上传到服务器：${file.name}（成功，索引未找到）`;
+        }
+      }).catch(err => {
+        console.error(err);
+        prog.info.textContent = `上传到服务器：${file.name}（失败）`;
+        console.error('[server:upload:error]', err);
       });
 
       input.value = '';
     }
 
-    async function uploadFile() {
-      const fileInput = document.getElementById('fileInput');
-      const file = fileInput.files[0];
-      if (!file || !myUserId) return;
-
-      const formData = new FormData();
-      formData.append('file', file);
-
-      try {
-        const res = await fetch(`http://${serviceUrl}/upload`, {
-          method: 'POST',
-          body: formData
-        });
-
-        if (!res.ok) {
-          const err = await res.text();
-          alert('上传失败: ' + err);
-          return;
-        }
-
-        const response = await res.json();
-
-        await fetch(`http://${serviceUrl}/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: JSON.stringify({
-              type: 'file',
-              url: response.fileUrl,
-              name: response.fileName,
-              size: response.fileSize
-            }),
-            from: myUserId
-          })
-        });
-
-        fileInput.value = '';
-      } catch (e) {
-        console.error(e);
-        alert('上传出错');
-      }
+    async function requestFile(fromUserId, fileId) {
+      // 建立到发送者的连接
+      console.log('[requestFile] start', { fromUserId, fileId });
+      await connectToUser(fromUserId);
+      await new Promise(resolve => {
+        const check = () => {
+          if (dataChannels[fromUserId]) resolve();
+          else setTimeout(check, 200);
+        };
+        check();
+      });
+      await waitForChannelOpen(dataChannels[fromUserId]);
+      // 发送请求
+      console.log('[requestFile] send request', { to: fromUserId, fileId });
+      dataChannels[fromUserId].send(JSON.stringify({ type: 'p2p-file-request', fileId }));
     }
+
+    // 右上角设置弹窗交互
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsModal = document.getElementById('settingsModal');
+    const settingsClose = document.getElementById('settingsClose');
+    settingsBtn.addEventListener('click', () => { settingsModal.style.display = 'flex'; const sw=document.getElementById('lanModeSwitch'); if (sw) sw.checked = lanMode; });
+    settingsClose.addEventListener('click', () => { settingsModal.style.display = 'none'; });
+    settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) settingsModal.style.display = 'none'; });
+
+    // 设置：LAN 模式开关
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.id === 'lanModeSwitch') {
+        lanMode = !!e.target.checked;
+        console.log('[settings] lanMode =', lanMode);
+      }
+    });
+
+    // 测试按钮绑定
+    document.getElementById('testSendText').addEventListener('click', async () => {
+      const text = 'Hello from settings panel';
+      try {
+        const res = await fetch(`http://${serviceUrl}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, from: myUserId || 'PANEL_'+Date.now() }) });
+        alert('发送文本完成: ' + res.status);
+      } catch (e) { alert('发送失败: ' + e.message); }
+    });
+    document.getElementById('testWS').addEventListener('click', () => {
+      try {
+        const ws2 = new WebSocket(`ws://${serviceUrl}/ws`);
+        ws2.onopen = () => alert('[WS] open');
+        ws2.onerror = (e) => alert('[WS] error');
+        ws2.onclose = () => console.log('[WS] close');
+      } catch(e) { alert(e.message); }
+    });
+    document.getElementById('testP2PPlaceholder').addEventListener('click', async () => {
+      const fileId = 'TESTFILE_' + Date.now();
+      const name = 'dummy.jpg'; const size = 128*1024;
+      await fetch(`http://${serviceUrl}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: JSON.stringify({ type: 'p2p-file', fileId, name, size, from: myUserId }), from: myUserId }) });
+      alert('已群发占位: ' + fileId);
+    });
+    document.getElementById('testFilesList').addEventListener('click', async () => {
+      const res = await fetch(`http://${serviceUrl}/api/files`); const list = await res.json();
+      alert('files: ' + list.length);
+      console.log('[files]', list);
+    });
+    document.getElementById('testUploadSmall').addEventListener('click', async () => {
+      const file = new File([new Blob(['settings panel upload'])], 'panel.txt', { type:'text/plain' });
+      const fd = new FormData(); fd.append('file', file);
+      await new Promise((resolve,reject)=>{ const xhr=new XMLHttpRequest(); xhr.open('POST', `http://${serviceUrl}/upload`); xhr.onload=()=>{ (xhr.status>=200&&xhr.status<300)?resolve():reject(new Error(xhr.statusText)); }; xhr.onerror=reject; xhr.send(fd); });
+      alert('上传完成');
+    });
+    document.getElementById('testSignal').addEventListener('click', () => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return alert('WS未连接');
+      const to = prompt('输入目标用户ID'); if (!to) return;
+      const payload = { type:'ping', from: myUserId, to, payload:{ ts: Date.now() } };
+      ws.send(JSON.stringify({ type:'signal', data: payload }));
+      alert('已发送信令到 ' + to);
+    });
+
+    // 事件绑定（替代内联 onclick），更稳健
+    document.getElementById('sendBtn').addEventListener('click', () => {
+      try { sendMessage(); } catch (err) { console.error('[sendMessage:error]', err); }
+    });
+    // 打开菜单
+    const fileSendBtn = document.getElementById('fileSendBtn');
+    const fileSendMenu = document.getElementById('fileSendMenu');
+    fileSendBtn.addEventListener('click', () => {
+      // 同步在线用户到菜单下拉
+      const sel = document.getElementById('menuTargetUser');
+      sel.innerHTML = '<option value="">请选择用户</option>';
+      onlineUsers.forEach(u => { const opt = document.createElement('option'); opt.value = u; opt.textContent = u; sel.appendChild(opt); });
+      fileSendMenu.style.display = 'block';
+    });
+
+    // 菜单交互：切换直传时显示用户选择
+    fileSendMenu.addEventListener('change', (e) => {
+      if (e.target.name === 'sendMode') {
+        document.getElementById('menuTargetWrap').style.display = (e.target.value === 'direct') ? 'block' : 'none';
+      }
+    });
+
+    // 菜单取消
+    document.getElementById('menuCancel').addEventListener('click', () => {
+      fileSendMenu.style.display = 'none';
+    });
+
+    // 菜单确认
+    document.getElementById('menuConfirm').addEventListener('click', () => {
+      const mode = [...fileSendMenu.querySelectorAll('input[name="sendMode"]')].find(r => r.checked)?.value;
+      if (!mode) return;
+      fileSendMenu.style.display = 'none';
+      if (mode === 'p2p') pickP2PUpload();
+      else if (mode === 'server') pickServerUpload();
+      else if (mode === 'direct') {
+        const target = document.getElementById('menuTargetUser').value;
+        if (!target) { alert('请选择接收用户'); return; }
+        const input = document.getElementById('fileInputDirect');
+        input.onchange = () => uploadFileDirect(target);
+        input.click();
+      }
+    });
 
     document.getElementById('messageInput').addEventListener('keypress', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        sendMessage();
+        try { sendMessage(); } catch (err) { console.error('[sendMessage:error]', err); }
       }
     });
+
+    // 在线用户下拉刷新（兼容存在与否）
+    function refreshTargetUser() {
+      const ids = ['menuTargetUser', 'targetUser'];
+      ids.forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        const keep = sel.value;
+        // 根据不同下拉展示不同默认项
+        if (id === 'menuTargetUser') {
+          sel.innerHTML = '<option value="">请选择用户</option>';
+        } else {
+          sel.innerHTML = '<option value="">（不指定）</option>';
+        }
+        onlineUsers.forEach(u => {
+          const opt = document.createElement('option');
+          opt.value = u; opt.textContent = u;
+          sel.appendChild(opt);
+        });
+        if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+      });
+    }
 
     connectWebSocket();
   </script>

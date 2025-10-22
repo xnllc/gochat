@@ -24,7 +24,7 @@ import (
 	"github.com/rs/cors"
 )
 
-const Version = "1.3.5"
+const Version = "1.3.6"
 
 // 新增：支持人类可读单位的 ByteSize 类型
 type ByteSize int64
@@ -75,6 +75,9 @@ var (
 	startTime = time.Now()
 	clients   = make(map[*websocket.Conn]string)
 	clientsMu sync.RWMutex
+
+	// 反向索引：userId -> conn，用于精确转发信令到目标对端
+	userIdToConn = make(map[string]*websocket.Conn)
 
 	fileList = make(map[string]FileInfo)
 	filesMu  sync.RWMutex
@@ -176,6 +179,25 @@ func broadcast(msg WSMessage) {
 	}
 }
 
+// 简易信令消息结构（用于 WebRTC 建链）
+type SignalMessage struct {
+	Type    string                 `json:"type"`    // offer/answer/candidate
+	From    string                 `json:"from"`    // 发送者 userId
+	To      string                 `json:"to"`      // 目标 userId
+	Payload map[string]interface{} `json:"payload"` // SDP/ICE
+}
+
+func forwardSignal(toUserId string, payload interface{}) error {
+	clientsMu.RLock()
+	defer clientsMu.RUnlock()
+	conn := userIdToConn[toUserId]
+	if conn == nil {
+		return fmt.Errorf("target user %s not found", toUserId)
+	}
+	data, _ := json.Marshal(payload)
+	return conn.WriteMessage(websocket.TextMessage, data)
+}
+
 func wsHandler(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -188,13 +210,20 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	clientsMu.Lock()
 	clients[conn] = userID
+	userIdToConn[userID] = conn
 	count := len(clients)
+	// 更新在线用户列表
+	var users []string
+	for _, uid := range clients {
+		users = append(users, uid)
+	}
 	clientsMu.Unlock()
 
 	conn.WriteMessage(websocket.TextMessage, mustMarshal(map[string]interface{}{
 		"type":   "init",
 		"userId": userID,
 	}))
+	broadcast(WSMessage{Type: "users", Data: Message{Text: strings.Join(users, ","), From: "system", Time: time.Now().Format("15:04:05")}})
 
 	now := time.Now().Format("15:04:05")
 	broadcast(WSMessage{
@@ -211,9 +240,16 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		clientsMu.Lock()
 		delete(clients, conn)
+		delete(userIdToConn, userID)
 		newCount := len(clients)
+		// 更新在线用户列表
+		var users []string
+		for _, uid := range clients {
+			users = append(users, uid)
+		}
 		clientsMu.Unlock()
 
+		broadcast(WSMessage{Type: "users", Data: Message{Text: strings.Join(users, ","), From: "system", Time: time.Now().Format("15:04:05")}})
 		broadcast(WSMessage{
 			Type: "message",
 			Data: Message{
@@ -226,9 +262,30 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	for {
-		_, _, err := conn.ReadMessage()
+		_, msgBytes, err := conn.ReadMessage()
 		if err != nil {
 			break
+		}
+		// 解析消息封装
+		var envelope struct {
+			Type string          `json:"type"`
+			Data json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal(msgBytes, &envelope); err == nil && envelope.Type == "signal" {
+			var s SignalMessage
+			if err := json.Unmarshal(envelope.Data, &s); err == nil && s.Type != "" && s.To != "" {
+				// 添加来源（如前端未填充）
+				if s.From == "" {
+					s.From = userID
+				}
+				payload := map[string]interface{}{
+					"type": "signal",
+					"data": s,
+				}
+				if err := forwardSignal(s.To, payload); err != nil {
+					log.Printf("转发信令失败: %v", err)
+				}
+			}
 		}
 	}
 }
@@ -439,6 +496,7 @@ func main() {
 	// API 路由
 	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/send", sendHandler)
+	// （保留原上传接口用于兼容），但推荐使用 WebRTC P2P 传输
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/api/files", listFilesHandler)
 	http.HandleFunc("/api/files/", deleteFileHandler)
