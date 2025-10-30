@@ -86,6 +86,7 @@ var (
 type Message struct {
 	Text string `json:"text"`
 	From string `json:"from"`
+	To   string `json:"to,omitempty"`
 	Time string `json:"time"`
 }
 
@@ -206,7 +207,19 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	userID := generateUserID()
+	// 支持通过查询参数 uid 指定固定用户ID（用于持久化身份）
+	want := r.URL.Query().Get("uid")
+	userID := want
+	if userID == "" {
+		userID = generateUserID()
+	}
+	// 若已存在同名在线用户，避免冲突（追加随机后缀）
+	clientsMu.RLock()
+	_, taken := userIdToConn[userID]
+	clientsMu.RUnlock()
+	if taken {
+		userID = generateUserID()
+	}
 
 	clientsMu.Lock()
 	clients[conn] = userID
@@ -324,6 +337,50 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// 私聊消息：只发给目标与发送者自己
+func sendPrivateHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Message string `json:"message"`
+		From    string `json:"from"`
+		To      string `json:"to"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if req.Message == "" || req.From == "" || req.To == "" {
+		http.Error(w, "Missing 'message' or 'from' or 'to'", http.StatusBadRequest)
+		return
+	}
+	clientsMu.RLock()
+	targetConn := userIdToConn[req.To]
+	senderConn := userIdToConn[req.From]
+	clientsMu.RUnlock()
+	if targetConn == nil {
+		http.Error(w, "Target user not online", http.StatusNotFound)
+		return
+	}
+	now := time.Now().Format("15:04:05")
+	payload := WSMessage{Type: "private", Data: Message{Text: req.Message, From: req.From, To: req.To, Time: now}}
+	data, _ := json.Marshal(payload)
+	// 发给对方
+	if err := targetConn.WriteMessage(websocket.TextMessage, data); err != nil {
+		log.Printf("私聊发送失败(对方): %v", err)
+	}
+	// 回显给自己
+	if senderConn != nil {
+		if err := senderConn.WriteMessage(websocket.TextMessage, data); err != nil {
+			log.Printf("私聊发送失败(自己): %v", err)
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -408,6 +465,50 @@ func listFilesHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(list)
 }
 
+// listAllFilesHandler 扫描磁盘 uploads 目录，返回真实存在的文件列表（与内存合并）
+func listAllFilesHandler(w http.ResponseWriter, r *http.Request) {
+	entries, err := os.ReadDir(*uploadDir)
+	if err != nil {
+		http.Error(w, "Server error", http.StatusInternalServerError)
+		return
+	}
+
+	var list []FileInfo
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		full := filepath.Join(*uploadDir, name)
+		st, err := os.Stat(full)
+		if err != nil {
+			continue
+		}
+
+		// 如果内存里有记录，尽量保留原始名称
+		filesMu.RLock()
+		fi, ok := fileList[name]
+		filesMu.RUnlock()
+
+		item := FileInfo{
+			Name:      name,
+			SavedName: name,
+			Size:      st.Size(),
+			Uploaded:  st.ModTime(),
+			URL:       "/files/" + name,
+		}
+		if ok && fi.Name != "" {
+			item.Name = fi.Name
+		}
+		list = append(list, item)
+	}
+
+	sort.Slice(list, func(i, j int) bool { return list[i].Uploaded.After(list[j].Uploaded) })
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(list)
+}
+
 func deleteFileHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -441,6 +542,36 @@ func deleteFileHandler(w http.ResponseWriter, r *http.Request) {
 	delete(fileList, savedName)
 	filesMu.Unlock()
 
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// deleteRealFileHandler 真实删除：不依赖内存索引，直接按磁盘文件名删除
+func deleteRealFileHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	path := r.URL.Path[len("/api/files/all/"):]
+	savedName := filepath.Base(path)
+	if savedName == "" || strings.Contains(savedName, "..") || !strings.Contains(path, savedName) {
+		http.Error(w, "Invalid filename", http.StatusBadRequest)
+		return
+	}
+	filePath := filepath.Join(*uploadDir, savedName)
+	if err := os.Remove(filePath); err != nil {
+		if os.IsNotExist(err) {
+			// 即使文件不存在也视为成功，保证幂等
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		log.Printf("真实删除失败 %s: %v", filePath, err)
+		http.Error(w, "Server error", http.StatusInternalServerError)
+		return
+	}
+	// 同步内存索引（若存在）
+	filesMu.Lock()
+	delete(fileList, savedName)
+	filesMu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -496,10 +627,13 @@ func main() {
 	// API 路由
 	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/send", sendHandler)
+	http.HandleFunc("/send/private", sendPrivateHandler)
 	// （保留原上传接口用于兼容），但推荐使用 WebRTC P2P 传输
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/api/files", listFilesHandler)
+	http.HandleFunc("/api/files/all", listAllFilesHandler)
 	http.HandleFunc("/api/files/", deleteFileHandler)
+	http.HandleFunc("/api/files/all/", deleteRealFileHandler)
 	http.HandleFunc("/info", infoHandler)
 
 	// 文件下载服务（使用配置的 uploadDir）

@@ -18,6 +18,25 @@
     #settingsBtn:hover { background: #f7f7f7; }
     /* 设置弹窗 */
     #settingsModal { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: none; align-items: center; justify-content: center; z-index: 30; }
+
+    /* 右侧在线用户面板 */
+    #onlinePanel { position: fixed; top: 64px; right: 16px; bottom: 16px; width: 260px; background:#fff; border:1px solid #e5e5e5; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); padding: 12px; overflow: auto; z-index: 15; display:none; }
+    #onlineToggle { position: fixed; top: 64px; right: 16px; width: 40px; height: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); cursor: pointer; z-index: 16; }
+    #onlinePanel .hd { font-weight: 600; margin-bottom: 8px; display:flex; align-items:center; justify-content:space-between; }
+    #onlineList .item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 6px; border-bottom:1px solid #f3f3f3; }
+    #onlineList .id { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; color:#555; }
+    #onlineList .ops { display:flex; gap:6px; }
+    #onlineList .ops button { padding:4px 8px; border-radius:6px; font-size:12px; border:1px solid #ddd; background:#fafafa; color:#333; cursor:pointer; }
+    #onlineList .ops button:hover { background:#f0f0f0; }
+
+    /* 宽屏时为主体内容预留右侧边距，避免被面板遮挡 */
+    @media (min-width: 1100px) {
+      body { padding-right: 280px; }
+    }
+    /* 窄屏隐藏面板 */
+    @media (max-width: 1099px) {
+      #onlinePanel { display:none; }
+    }
     #settingsModal .panel { background: #fff; width: 520px; max-width: calc(100% - 40px); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; }
     #settingsModal .panel .hd { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #eee; font-weight: 600; }
     #settingsModal .panel .bd { padding: 16px; max-height: 70vh; overflow: auto; }
@@ -61,7 +80,7 @@
       color: #333;
       font-size: 1.4em;
     }
-    #chatBox {
+    .chatbox {
       flex: 1;
       overflow-y: auto;
       background: white;
@@ -71,6 +90,7 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       display: flex;
       flex-direction: column;
+      min-height: 200px;
     }
     .message {
       max-width: 80%;
@@ -139,19 +159,23 @@
       text-align: right;
     }
 
-    #inputArea {
+    .inputArea {
       display: flex;
       gap: 10px;
       align-items: center;
+      flex-wrap: wrap;
+      margin-top: 8px;
     }
-    #messageInput {
+    #targetUser { padding: 8px 10px; border:1px solid #ccc; border-radius: 8px; background:#fff; }
+    #messageInputGroup, #messageInputPrivate {
       flex: 1;
-      padding: 12px 16px;
+      width: 100%;
+      padding: 14px 18px;
       border: 1px solid #ccc;
       border-radius: 24px;
       outline: none;
       font-size: 16px;
-      min-height: 20px;
+      min-height: 44px;
     }
     button {
       padding: 12px 20px;
@@ -172,10 +196,19 @@
     #fileInput {
       display: none;
     }
+    #chatBoxesPrivate { flex: 1; }
   </style>
 </head>
 <body>
   <div id="container">
+    <img id="onlineToggle" src="/img2.png" alt="在线用户" title="展开在线用户" />
+    <div id="onlinePanel">
+      <div class="hd">在线用户 (<span id="onlineCount">0</span>)
+        <button id="refreshUsers" class="btn-sm" style="background:#eee;color:#333;">刷新</button>
+      </div>
+      <div id="onlineList"></div>
+    </div>
+
     <button id="settingsBtn" title="设置与测试" aria-label="设置">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="3"></circle>
@@ -194,9 +227,33 @@
             <input type="checkbox" id="lanModeSwitch" />
             <label for="lanModeSwitch">启用 LAN 优化模式（仅使用本地局域网候选，跳过公网 STUN）</label>
           </div>
+          <div style="margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+            <label for="nickInput" style="white-space:nowrap;">昵称：</label>
+            <input id="nickInput" type="text" placeholder="输入你的昵称（仅本机可见）" style="flex:1; padding:8px 10px; border:1px solid #ccc; border-radius:6px;" />
+            <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
+              <input type="checkbox" id="saveNickChk" /> 保存昵称
+            </label>
+          </div>
+          <div class="actions-row" style="justify-content:flex-start; gap:10px; align-items:center;">
+            <button id="resetIdentityBtn" class="btn-sm" style="background:#eee;color:#333;">重置身份</button>
+            <span class="small muted">清除本地 userId，重新连接以获取新的用户ID</span>
+          </div>
+
+          <div style="margin-top:14px; padding-top:10px; border-top:1px dashed #eee; display:flex; flex-direction:column; gap:10px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <label for="historyLimitInput" style="white-space:nowrap;">聊天记录条数：</label>
+              <input id="historyLimitInput" type="number" min="10" max="10000" step="10" style="width:120px; padding:6px 8px; border:1px solid #ccc; border-radius:6px;" />
+              <span class="small muted">默认 100 条，超出将自动裁剪</span>
+            </div>
+            <div class="actions-row" style="justify-content:flex-start; gap:8px;">
+              <button id="exportHistoryBtn" class="btn-sm" style="background:#eee;color:#333;">导出聊天记录</button>
+              <button id="importHistoryBtn" class="btn-sm" style="background:#eee;color:#333;">导入聊天记录</button>
+            </div>
+          </div>
           <div class="test-grid">
             <button id="testSendText">发送文本(Hello)</button>
             <button id="testWS">测试 WebSocket</button>
+            <button id="testPrivate">发送私聊(Hello → 选择目标)</button>
             <button id="testP2PPlaceholder">群发占位(P2P)</button>
             <button id="testFilesList">获取文件列表</button>
             <button id="testUploadSmall">上传小文件</button>
@@ -207,20 +264,24 @@
     </div>
 
     <h1>💬 局域网临时测试收发信息和文件</h1>
-    <div id="chatBox"></div>
-    <div id="inputArea">
-      <input type="text" id="messageInput" placeholder="输入消息..." autocomplete="off" />
-      <button id="sendBtn">发送</button>
-
-      <input type="file" id="fileInput" style="display:none" />
-      <input type="file" id="fileInputServer" style="display:none" />
-      <input type="file" id="fileInputDirect" style="display:none" />
-
-      <button id="fileSendBtn">📎 文件发送</button>
+    <div id="chatTabs" style="display:flex; gap:8px; margin:8px 0;">
+      <button id="tabGroup" class="btn-sm" style="background:#0084ff;color:#fff;">群聊</button>
+      <div id="privateTabs" style="display:flex; gap:8px;"></div>
+    </div>
+    <div id="chatBoxGroup" class="chatbox" style="display:flex;"></div>
+    <div id="chatBoxesPrivate" style="display:none;"></div>
+    <div id="privateInputs" class="inputArea" style="display:none; flex-direction:column; gap:12px;"></div>
+    <div id="inputAreaGroup" class="inputArea">
+      <input type="text" id="messageInputGroup" placeholder="在群聊中输入消息..." autocomplete="off" />
+      <button id="sendBtnGroup">发送</button>
+      <button id="fileSendBtnGroup">📎 文件发送</button>
     </div>
 
+    <!-- 私聊输入区容器（动态添加多个会话输入框） -->
+    <div id="privateInputsContainer" class="inputArea" style="display:none; flex-direction:column; gap:12px;"></div>
+
     <!-- 文件发送选项菜单 -->
-    <div id="fileSendMenu" style="display:none; position:absolute; right:16px; bottom:80px; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.12); padding:12px; min-width:260px; z-index:10;">
+    <div id="fileSendMenu" style="display:none; position:fixed; right:16px; bottom:80px; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.12); padding:12px; min-width:260px; z-index:50;">
       <div style="font-weight:600; margin-bottom:8px;">选择发送方式</div>
       <label style="display:block; margin:6px 0;">
         <input type="radio" name="sendMode" value="p2p" checked /> P2P 群里占位，点击后再传
@@ -241,35 +302,71 @@
         <button id="menuConfirm" class="btn-sm" style="background:#0084ff; color:#fff;">确定</button>
       </div>
     </div>
+    <input id="fileInput" type="file" style="display:none;" />
+    <input id="fileInputServer" type="file" style="display:none;" />
+    <input id="fileInputDirect" type="file" style="display:none;" />
   </div>
 
   <script>
     const serviceUrl = window.location.host;
     let myUserId = '';
     let ws = null;
+    // 本地昵称（仅本机展示用）
+    let displayName = localStorage.getItem('nickname') || '';
     let peerConnections = {}; // userId -> RTCPeerConnection
     let dataChannels = {};    // userId -> RTCDataChannel
     let onlineUsers = [];     // 在线用户列表（来自服务端广播）
 
+    // 本地聊天记录与配置
+    const HISTORY_KEY = 'chatHistoryV1';
+    const HISTORY_LIMIT_KEY = 'chatHistoryLimit';
+    let historyLimit = parseInt(localStorage.getItem(HISTORY_LIMIT_KEY) || '100', 10);
+    let historyStore = { group: [], private: {} }; // { group: Message[], private: { [userId]: Message[] } }
+
+    // 从本地恢复历史
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          historyStore = { group: parsed.group || [], private: parsed.private || {} };
+        }
+      }
+    } catch (e) { console.warn('[history] parse error', e); }
+
     function connectWebSocket() {
-      ws = new WebSocket(`ws://${serviceUrl}/ws`);
+      const uid = localStorage.getItem('userId') || '';
+      ws = new WebSocket(`ws://${serviceUrl}/ws${uid ? ('?uid=' + encodeURIComponent(uid)) : ''}`);
 
       ws.onopen = () => {
         console.log('[ws] open');
+        // 初次连接完成后，渲染群聊历史
+        try {
+          const box = document.getElementById('chatBoxGroup');
+          if (box && !box.dataset.inited) {
+            box.dataset.inited = '1';
+            (historyStore.group || []).slice(-historyLimit).forEach(r => addMessageToUI({ text: r.text, from: r.from, time: r.time }));
+          }
+        } catch (e) { console.warn('[history] render group error', e); }
       };
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.type === 'init') {
           myUserId = data.userId;
+          try { localStorage.setItem('userId', myUserId); } catch {}
           console.log('[ws:init] myUserId', myUserId);
         } else if (data.type === 'message') {
           addMessageToUI(data.data);
+        } else if (data.type === 'private') {
+          const m = data.data; m.private = true; addMessageToUI(m);
         } else if (data.type === 'users') {
           // 系统广播在线用户列表（逗号分隔）
           onlineUsers = data.data.text ? data.data.text.split(',').filter(u => u && u !== myUserId) : [];
           console.log('[ws:users]', onlineUsers);
           refreshTargetUser();
+          renderOnlineUsers();
+
         } else if (data.type === 'signal') {
           // 收到来自服务端转发的信令
           const s = data.data; // { type, from, to, payload }
@@ -399,7 +496,8 @@
               const container = document.createElement('div');
               container.className = 'message other';
               const prog = ensureProgress(container, `recv-${toUserId}-${msg.name}`, `来自 ${toUserId}：${msg.name}`);
-              document.getElementById('chatBox').appendChild(container);
+              if (msg.private) { ensurePrivateTab(toUserId); document.getElementById('chatBox-' + toUserId).appendChild(container); }
+              else { document.getElementById('chatBoxGroup').appendChild(container); }
             } else if (msg.type === 'p2p-file-request') {
               // 只有发送者会处理该请求：查找本地 pendingFiles，启动分片发送，带进度
               const fileId = msg.fileId;
@@ -410,7 +508,8 @@
               const container = document.createElement('div');
               container.className = 'message self';
               const prog = ensureProgress(container, `send-${toUserId}-${fileId}`, `发送给 ${toUserId}：${file.name}`);
-              document.getElementById('chatBox').appendChild(container);
+              if (msg.private) { ensurePrivateTab(toUserId); document.getElementById('chatBox-' + toUserId).appendChild(container); }
+              else { document.getElementById('chatBoxGroup').appendChild(container); }
               // 等待 ICE 与通道打开再发送
               await waitForIceConnected(peerConnections[toUserId]).catch(e => { console.warn('[ice] not ready', e); });
               await waitForChannelOpen(channel);
@@ -554,7 +653,15 @@
     }
 
     function addMessageToUI(msg) {
-      const chatBox = document.getElementById('chatBox');
+      let chatBox;
+      if (msg.private) {
+        const otherUser = (msg.from === myUserId) ? (msg.to || '') : msg.from;
+        if (!otherUser) return;
+        ensurePrivateTab(otherUser);
+        chatBox = document.getElementById('chatBox-' + otherUser);
+      } else {
+        chatBox = document.getElementById('chatBoxGroup');
+      }
 
       if (msg.from === 'system') {
         const div = document.createElement('div');
@@ -576,7 +683,8 @@
         bubble.appendChild(msg.contentNode);
         const header = document.createElement('div');
         header.className = 'header';
-        header.textContent = msg.from;
+        const nameFrom = (msg.from === myUserId && displayName) ? displayName : msg.from;
+        header.textContent = msg.private ? `${nameFrom}` : nameFrom;
         const timeEl = document.createElement('div');
         timeEl.className = 'time';
         timeEl.textContent = msg.time;
@@ -646,7 +754,7 @@
           const meta = document.createElement('div');
           meta.style.fontSize = '12px';
           meta.style.color = isSelf ? '#a0d4ff' : '#666';
-          meta.textContent = `来自用户：${from}`;
+          meta.textContent = `来自用户：${(from === myUserId && displayName) ? displayName : from}`;
           wrap.appendChild(a);
           wrap.appendChild(meta);
           content = wrap;
@@ -656,7 +764,8 @@
       }
 
       if (!isFile && !content) {
-        content = document.createTextNode(msg.text);
+        const text = msg.private ? `🔒 ${msg.text}` : msg.text;
+        content = document.createTextNode(text);
       }
 
       // 消息气泡
@@ -671,7 +780,8 @@
       // 用户名
       const header = document.createElement('div');
       header.className = 'header';
-      header.textContent = msg.from;
+      const nameFrom = (msg.from === myUserId && displayName) ? displayName : msg.from;
+      header.textContent = msg.private ? `${nameFrom}` : nameFrom;
 
       // 时间
       const timeEl = document.createElement('div');
@@ -684,22 +794,45 @@
 
       chatBox.appendChild(div);
       chatBox.scrollTop = chatBox.scrollHeight;
+
+      // 存入本地历史并裁剪
+      try {
+        const rec = { text: msg.text || '', from: msg.from, to: msg.to || '', time: msg.time || new Date().toLocaleTimeString(), private: !!msg.private };
+        if (rec.private) {
+          const other = (msg.from === myUserId) ? (msg.to || '') : msg.from;
+          if (other) {
+            historyStore.private[other] = historyStore.private[other] || [];
+            historyStore.private[other].push(rec);
+            if (historyStore.private[other].length > historyLimit) historyStore.private[other].splice(0, historyStore.private[other].length - historyLimit);
+          }
+        } else {
+          historyStore.group.push(rec);
+          if (historyStore.group.length > historyLimit) historyStore.group.splice(0, historyStore.group.length - historyLimit);
+        }
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(historyStore));
+      } catch (e) { console.warn('[history] save error', e); }
     }
 
-    async function sendMessage() {
-      const input = document.getElementById('messageInput');
-      const btn = document.getElementById('sendBtn');
-      const text = input.value.trim();
+    async function sendMessageScoped(isPrivate) {
+      const input = isPrivate ? document.getElementById('messageInputPrivate') : document.getElementById('messageInputGroup');
+      const btn = isPrivate ? document.getElementById('sendBtnPrivate') : document.getElementById('sendBtnGroup');
+      const text = (input?.value || '').trim();
       if (!text) return;
       if (!myUserId) { console.warn('[send] myUserId 未初始化，稍后重试'); alert('正在连接服务器，请稍后再试'); return; }
 
       try {
         btn.disabled = true; btn.classList.add('disabled');
-        const res = await fetch(`http://${serviceUrl}/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, from: myUserId })
-        });
+        let url, payload;
+        if (isPrivate) {
+          const to = (document.getElementById('targetUser')||{}).value || '';
+          if (!to) { alert('请选择私聊对象'); return; }
+          url = `http://${serviceUrl}/send/private`;
+          payload = { message: text, from: myUserId, to };
+        } else {
+          url = `http://${serviceUrl}/send`;
+          payload = { message: text, from: myUserId };
+        }
+        const res = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         input.value = '';
       } catch (err) {
@@ -709,9 +842,7 @@
         btn.disabled = false; btn.classList.remove('disabled');
       }
     }
-
-    // 显式挂载到 window，确保内联 onclick 可访问
-    window.sendMessage = sendMessage;
+    window.sendMessageScoped = sendMessageScoped;
 
     function pickP2PUpload() {
       const input = document.getElementById('fileInput');
@@ -742,7 +873,8 @@
       const container = document.createElement('div');
       container.className = 'message self';
       const prog = ensureProgress(container, `send-${targetUserId}-${Date.now()}`, `发送给 ${targetUserId}：${file.name}`);
-      document.getElementById('chatBox').appendChild(container);
+      ensurePrivateTab(targetUserId);
+      document.getElementById('chatBox-' + targetUserId).appendChild(container);
       if (channel.readyState !== 'open') { alert('P2P 通道未就绪'); return; }
       try { channel.send(JSON.stringify({ type: 'file-meta', name: file.name, size: file.size, mime: file.type || 'application/octet-stream' })); } catch (e) { console.error('[direct] meta send failed', e); alert('P2P 元信息发送失败'); return; }
       // 分片+阈值限流（小分片 + bufferedamountlow）
@@ -837,7 +969,10 @@
       const container = document.createElement('div');
       container.className = 'message self';
       const prog = ensureProgress(container, `server-${Date.now()}-${file.name}`, `上传到服务器：${file.name}`);
-      document.getElementById('chatBox').appendChild(container);
+      // 若当前在私聊上下文，可考虑展示在当前活动的私聊窗口，否则默认群聊
+      const active = document.querySelector('.chatbox:not([style*="display: none"])');
+      if (active && active.id && active.id.startsWith('chatBox-')) active.appendChild(container);
+      else document.getElementById('chatBoxGroup').appendChild(container);
 
       const formData = new FormData();
       formData.append('file', file);
@@ -905,15 +1040,207 @@
     const settingsBtn = document.getElementById('settingsBtn');
     const settingsModal = document.getElementById('settingsModal');
     const settingsClose = document.getElementById('settingsClose');
-    settingsBtn.addEventListener('click', () => { settingsModal.style.display = 'flex'; const sw=document.getElementById('lanModeSwitch'); if (sw) sw.checked = lanMode; });
+    settingsBtn.addEventListener('click', () => {
+      settingsModal.style.display = 'flex';
+      const sw=document.getElementById('lanModeSwitch'); if (sw) sw.checked = lanMode;
+      const nickInput = document.getElementById('nickInput');
+      const saveChk = document.getElementById('saveNickChk');
+      if (nickInput) nickInput.value = displayName || '';
+      if (saveChk) saveChk.checked = !!localStorage.getItem('nickname');
+      const historyInput = document.getElementById('historyLimitInput');
+      if (historyInput) historyInput.value = historyLimit;
+    });
     settingsClose.addEventListener('click', () => { settingsModal.style.display = 'none'; });
     settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) settingsModal.style.display = 'none'; });
 
-    // 设置：LAN 模式开关
+    // 设置：LAN 模式开关 / 昵称保存 / 重置身份
     document.addEventListener('change', (e) => {
       if (e.target && e.target.id === 'lanModeSwitch') {
         lanMode = !!e.target.checked;
         console.log('[settings] lanMode =', lanMode);
+      }
+      if (e.target && e.target.id === 'saveNickChk') {
+        const chk = e.target.checked;
+        const val = (document.getElementById('nickInput')||{}).value || '';
+        if (chk && val) {
+          localStorage.setItem('nickname', val);
+          displayName = val;
+        } else if (!chk) {
+          localStorage.removeItem('nickname');
+        }
+      }
+    });
+
+    // 设置：聊天记录条数保存
+    document.addEventListener('input', (e) => {
+      if (e.target && e.target.id === 'historyLimitInput') {
+        const v = Math.max(10, Math.min(10000, parseInt(e.target.value||'100',10)||100));
+        historyLimit = v;
+        localStorage.setItem(HISTORY_LIMIT_KEY, String(historyLimit));
+        // 即刻裁剪并保存
+        try {
+          if (historyStore.group.length > historyLimit) historyStore.group.splice(0, historyStore.group.length - historyLimit);
+          for (const k in historyStore.private) {
+            const arr = historyStore.private[k] || [];
+            if (arr.length > historyLimit) arr.splice(0, arr.length - historyLimit);
+          }
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(historyStore));
+        } catch (e2) { console.warn('[history] limit apply error', e2); }
+      }
+    });
+
+    // 导出/导入聊天记录
+    document.addEventListener('click', async (e) => {
+      if (e.target && e.target.id === 'exportHistoryBtn') {
+        const blob = new Blob([JSON.stringify({ limit: historyLimit, ...historyStore }, null, 2)], { type:'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `go-chat-history-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;
+        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      }
+      if (e.target && e.target.id === 'importHistoryBtn') {
+        const picker = document.createElement('input'); picker.type='file'; picker.accept='.json,application/json';
+        picker.onchange = async () => {
+          const f = picker.files && picker.files[0]; if (!f) return;
+          try {
+            const text = await f.text();
+            const obj = JSON.parse(text);
+            if (!obj || typeof obj !== 'object') throw new Error('bad json');
+            const limit = parseInt(obj.limit || obj.historyLimit || historyLimit, 10) || historyLimit;
+            const grp = Array.isArray(obj.group) ? obj.group : [];
+            const prv = obj.private && typeof obj.private === 'object' ? obj.private : {};
+            historyLimit = Math.max(10, Math.min(10000, limit));
+            localStorage.setItem(HISTORY_LIMIT_KEY, String(historyLimit));
+            historyStore = { group: grp.slice(-historyLimit), private: {} };
+            for (const k in prv) historyStore.private[k] = (prv[k]||[]).slice(-historyLimit);
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(historyStore));
+            alert('导入成功，刷新页面后生效（群聊自动渲染，私聊在打开对应会话时渲染）');
+          } catch (err) { alert('导入失败：' + err.message); }
+        };
+        picker.click();
+      }
+    });
+
+    // 重置身份：清除本地 userId 并重新连接
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'resetIdentityBtn') {
+        try { localStorage.removeItem('userId'); } catch {}
+        alert('已清除本地用户ID，将重新连接服务器以获取新的ID');
+        try { if (ws) ws.close(); } catch {}
+        // 立即重连以刷新身份
+        setTimeout(connectWebSocket, 300);
+      }
+    });
+
+    // 设置：聊天记录条数保存
+    document.addEventListener('input', (e) => {
+      if (e.target && e.target.id === 'historyLimitInput') {
+        const v = Math.max(10, Math.min(10000, parseInt(e.target.value||'100',10)||100));
+        historyLimit = v;
+        localStorage.setItem(HISTORY_LIMIT_KEY, String(historyLimit));
+        // 即刻裁剪并保存
+        try {
+          if (historyStore.group.length > historyLimit) historyStore.group.splice(0, historyStore.group.length - historyLimit);
+          for (const k in historyStore.private) {
+            const arr = historyStore.private[k] || [];
+            if (arr.length > historyLimit) arr.splice(0, arr.length - historyLimit);
+          }
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(historyStore));
+        } catch (e2) { console.warn('[history] limit apply error', e2); }
+      }
+    });
+
+    // 导出/导入聊天记录
+    document.addEventListener('click', async (e) => {
+      if (e.target && e.target.id === 'exportHistoryBtn') {
+        const blob = new Blob([JSON.stringify({ limit: historyLimit, ...historyStore }, null, 2)], { type:'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `go-chat-history-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;
+        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      }
+      if (e.target && e.target.id === 'importHistoryBtn') {
+        const picker = document.createElement('input'); picker.type='file'; picker.accept='.json,application/json';
+        picker.onchange = async () => {
+          const f = picker.files && picker.files[0]; if (!f) return;
+          try {
+            const text = await f.text();
+            const obj = JSON.parse(text);
+            if (!obj || typeof obj !== 'object') throw new Error('bad json');
+            const limit = parseInt(obj.limit || obj.historyLimit || historyLimit, 10) || historyLimit;
+            const grp = Array.isArray(obj.group) ? obj.group : [];
+            const prv = obj.private && typeof obj.private === 'object' ? obj.private : {};
+            historyLimit = Math.max(10, Math.min(10000, limit));
+            localStorage.setItem(HISTORY_LIMIT_KEY, String(historyLimit));
+            historyStore = { group: grp.slice(-historyLimit), private: {} };
+            for (const k in prv) historyStore.private[k] = (prv[k]||[]).slice(-historyLimit);
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(historyStore));
+            alert('导入成功，刷新页面后生效（群聊自动渲染，私聊在打开对应会话时渲染）');
+          } catch (err) { alert('导入失败：' + err.message); }
+        };
+        picker.click();
+      }
+    });
+    document.addEventListener('input', (e) => {
+      if (e.target && e.target.id === 'nickInput') {
+        const val = e.target.value.trim();
+        displayName = val;
+        // 若勾选“保存昵称”，则实时保存
+        const save = document.getElementById('saveNickChk');
+        if (save && save.checked) {
+          if (val) localStorage.setItem('nickname', val);
+          else localStorage.removeItem('nickname');
+        }
+      }
+    });
+
+    // 设置：聊天记录条数保存
+    document.addEventListener('input', (e) => {
+      if (e.target && e.target.id === 'historyLimitInput') {
+        const v = Math.max(10, Math.min(10000, parseInt(e.target.value||'100',10)||100));
+        historyLimit = v;
+        localStorage.setItem(HISTORY_LIMIT_KEY, String(historyLimit));
+        // 即刻裁剪并保存
+        try {
+          if (historyStore.group.length > historyLimit) historyStore.group.splice(0, historyStore.group.length - historyLimit);
+          for (const k in historyStore.private) {
+            const arr = historyStore.private[k] || [];
+            if (arr.length > historyLimit) arr.splice(0, arr.length - historyLimit);
+          }
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(historyStore));
+        } catch (e2) { console.warn('[history] limit apply error', e2); }
+      }
+    });
+
+    // 导出/导入聊天记录
+    document.addEventListener('click', async (e) => {
+      if (e.target && e.target.id === 'exportHistoryBtn') {
+        const blob = new Blob([JSON.stringify({ limit: historyLimit, ...historyStore }, null, 2)], { type:'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `go-chat-history-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;
+        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      }
+      if (e.target && e.target.id === 'importHistoryBtn') {
+        const picker = document.createElement('input'); picker.type='file'; picker.accept='.json,application/json';
+        picker.onchange = async () => {
+          const f = picker.files && picker.files[0]; if (!f) return;
+          try {
+            const text = await f.text();
+            const obj = JSON.parse(text);
+            if (!obj || typeof obj !== 'object') throw new Error('bad json');
+            const limit = parseInt(obj.limit || obj.historyLimit || historyLimit, 10) || historyLimit;
+            const grp = Array.isArray(obj.group) ? obj.group : [];
+            const prv = obj.private && typeof obj.private === 'object' ? obj.private : {};
+            historyLimit = Math.max(10, Math.min(10000, limit));
+            localStorage.setItem(HISTORY_LIMIT_KEY, String(historyLimit));
+            historyStore = { group: grp.slice(-historyLimit), private: {} };
+            for (const k in prv) historyStore.private[k] = (prv[k]||[]).slice(-historyLimit);
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(historyStore));
+            alert('导入成功，刷新页面后生效（群聊自动渲染，私聊在打开对应会话时渲染）');
+          } catch (err) { alert('导入失败：' + err.message); }
+        };
+        picker.click();
       }
     });
 
@@ -925,6 +1252,13 @@
         alert('发送文本完成: ' + res.status);
       } catch (e) { alert('发送失败: ' + e.message); }
     });
+    document.getElementById('testPrivate').addEventListener('click', async () => {
+      const to = (document.getElementById('targetUser')||{}).value || prompt('输入目标用户ID');
+      if (!to) return; if (!myUserId) return alert('WS未连接');
+      await fetch(`http://${serviceUrl}/send/private`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: 'Hello (private)', from: myUserId, to }) });
+      alert('已发送私聊到 ' + to);
+    });
+
     document.getElementById('testWS').addEventListener('click', () => {
       try {
         const ws2 = new WebSocket(`ws://${serviceUrl}/ws`);
@@ -959,24 +1293,82 @@
     });
 
     // 事件绑定（替代内联 onclick），更稳健
-    document.getElementById('sendBtn').addEventListener('click', () => {
-      try { sendMessage(); } catch (err) { console.error('[sendMessage:error]', err); }
+    document.getElementById('sendBtnGroup').addEventListener('click', () => {
+      try { sendMessageScoped(false); } catch (err) { console.error('[sendMessageScoped:error]', err); }
     });
+
     // 打开菜单
-    const fileSendBtn = document.getElementById('fileSendBtn');
     const fileSendMenu = document.getElementById('fileSendMenu');
-    fileSendBtn.addEventListener('click', () => {
-      // 同步在线用户到菜单下拉
+    document.getElementById('fileSendBtnGroup').addEventListener('click', () => {
+      openFileSendMenuFor('');
+    });
+    function openFileSendMenuFor(targetUserId) {
       const sel = document.getElementById('menuTargetUser');
       sel.innerHTML = '<option value="">请选择用户</option>';
       onlineUsers.forEach(u => { const opt = document.createElement('option'); opt.value = u; opt.textContent = u; sel.appendChild(opt); });
+      // 若传入了目标用户，预选之并展示直传选项
+      if (targetUserId) {
+        document.querySelector('input[name="sendMode"][value="direct"]').checked = true;
+        document.getElementById('menuTargetWrap').style.display = 'block';
+        sel.value = targetUserId;
+      }
       fileSendMenu.style.display = 'block';
-    });
+    }
 
     // 菜单交互：切换直传时显示用户选择
     fileSendMenu.addEventListener('change', (e) => {
       if (e.target.name === 'sendMode') {
         document.getElementById('menuTargetWrap').style.display = (e.target.value === 'direct') ? 'block' : 'none';
+      }
+    });
+
+    // 设置：聊天记录条数保存
+    document.addEventListener('input', (e) => {
+      if (e.target && e.target.id === 'historyLimitInput') {
+        const v = Math.max(10, Math.min(10000, parseInt(e.target.value||'100',10)||100));
+        historyLimit = v;
+        localStorage.setItem(HISTORY_LIMIT_KEY, String(historyLimit));
+        // 即刻裁剪并保存
+        try {
+          if (historyStore.group.length > historyLimit) historyStore.group.splice(0, historyStore.group.length - historyLimit);
+          for (const k in historyStore.private) {
+            const arr = historyStore.private[k] || [];
+            if (arr.length > historyLimit) arr.splice(0, arr.length - historyLimit);
+          }
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(historyStore));
+        } catch (e2) { console.warn('[history] limit apply error', e2); }
+      }
+    });
+
+    // 导出/导入聊天记录
+    document.addEventListener('click', async (e) => {
+      if (e.target && e.target.id === 'exportHistoryBtn') {
+        const blob = new Blob([JSON.stringify({ limit: historyLimit, ...historyStore }, null, 2)], { type:'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `go-chat-history-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;
+        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      }
+      if (e.target && e.target.id === 'importHistoryBtn') {
+        const picker = document.createElement('input'); picker.type='file'; picker.accept='.json,application/json';
+        picker.onchange = async () => {
+          const f = picker.files && picker.files[0]; if (!f) return;
+          try {
+            const text = await f.text();
+            const obj = JSON.parse(text);
+            if (!obj || typeof obj !== 'object') throw new Error('bad json');
+            const limit = parseInt(obj.limit || obj.historyLimit || historyLimit, 10) || historyLimit;
+            const grp = Array.isArray(obj.group) ? obj.group : [];
+            const prv = obj.private && typeof obj.private === 'object' ? obj.private : {};
+            historyLimit = Math.max(10, Math.min(10000, limit));
+            localStorage.setItem(HISTORY_LIMIT_KEY, String(historyLimit));
+            historyStore = { group: grp.slice(-historyLimit), private: {} };
+            for (const k in prv) historyStore.private[k] = (prv[k]||[]).slice(-historyLimit);
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(historyStore));
+            alert('导入成功，刷新页面后生效（群聊自动渲染，私聊在打开对应会话时渲染）');
+          } catch (err) { alert('导入失败：' + err.message); }
+        };
+        picker.click();
       }
     });
 
@@ -1001,12 +1393,186 @@
       }
     });
 
-    document.getElementById('messageInput').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        try { sendMessage(); } catch (err) { console.error('[sendMessage:error]', err); }
+    // 设置：聊天记录条数保存
+    document.addEventListener('input', (e) => {
+      if (e.target && e.target.id === 'historyLimitInput') {
+        const v = Math.max(10, Math.min(10000, parseInt(e.target.value||'100',10)||100));
+        historyLimit = v;
+        localStorage.setItem(HISTORY_LIMIT_KEY, String(historyLimit));
+        // 即刻裁剪并保存
+        try {
+          if (historyStore.group.length > historyLimit) historyStore.group.splice(0, historyStore.group.length - historyLimit);
+          for (const k in historyStore.private) {
+            const arr = historyStore.private[k] || [];
+            if (arr.length > historyLimit) arr.splice(0, arr.length - historyLimit);
+          }
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(historyStore));
+        } catch (e2) { console.warn('[history] limit apply error', e2); }
       }
     });
+
+    // 导出/导入聊天记录
+    document.addEventListener('click', async (e) => {
+      if (e.target && e.target.id === 'exportHistoryBtn') {
+        const blob = new Blob([JSON.stringify({ limit: historyLimit, ...historyStore }, null, 2)], { type:'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `go-chat-history-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;
+        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      }
+      if (e.target && e.target.id === 'importHistoryBtn') {
+        const picker = document.createElement('input'); picker.type='file'; picker.accept='.json,application/json';
+        picker.onchange = async () => {
+          const f = picker.files && picker.files[0]; if (!f) return;
+          try {
+            const text = await f.text();
+            const obj = JSON.parse(text);
+            if (!obj || typeof obj !== 'object') throw new Error('bad json');
+            const limit = parseInt(obj.limit || obj.historyLimit || historyLimit, 10) || historyLimit;
+            const grp = Array.isArray(obj.group) ? obj.group : [];
+            const prv = obj.private && typeof obj.private === 'object' ? obj.private : {};
+            historyLimit = Math.max(10, Math.min(10000, limit));
+            localStorage.setItem(HISTORY_LIMIT_KEY, String(historyLimit));
+            historyStore = { group: grp.slice(-historyLimit), private: {} };
+            for (const k in prv) historyStore.private[k] = (prv[k]||[]).slice(-historyLimit);
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(historyStore));
+            alert('导入成功，刷新页面后生效（群聊自动渲染，私聊在打开对应会话时渲染）');
+          } catch (err) { alert('导入失败：' + err.message); }
+        };
+        picker.click();
+      }
+    });
+
+    const msgGroup = document.getElementById('messageInputGroup');
+    msgGroup.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        try { sendMessageScoped(false); } catch (err) { console.error('[sendMessageScoped:error]', err); }
+      }
+    });
+
+    // 设置：聊天记录条数保存
+    document.addEventListener('input', (e) => {
+      if (e.target && e.target.id === 'historyLimitInput') {
+        const v = Math.max(10, Math.min(10000, parseInt(e.target.value||'100',10)||100));
+        historyLimit = v;
+        localStorage.setItem(HISTORY_LIMIT_KEY, String(historyLimit));
+        // 即刻裁剪并保存
+        try {
+          if (historyStore.group.length > historyLimit) historyStore.group.splice(0, historyStore.group.length - historyLimit);
+          for (const k in historyStore.private) {
+            const arr = historyStore.private[k] || [];
+            if (arr.length > historyLimit) arr.splice(0, arr.length - historyLimit);
+          }
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(historyStore));
+        } catch (e2) { console.warn('[history] limit apply error', e2); }
+      }
+    });
+
+    // 导出/导入聊天记录
+    document.addEventListener('click', async (e) => {
+      if (e.target && e.target.id === 'exportHistoryBtn') {
+        const blob = new Blob([JSON.stringify({ limit: historyLimit, ...historyStore }, null, 2)], { type:'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `go-chat-history-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;
+        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      }
+      if (e.target && e.target.id === 'importHistoryBtn') {
+        const picker = document.createElement('input'); picker.type='file'; picker.accept='.json,application/json';
+        picker.onchange = async () => {
+          const f = picker.files && picker.files[0]; if (!f) return;
+          try {
+            const text = await f.text();
+            const obj = JSON.parse(text);
+            if (!obj || typeof obj !== 'object') throw new Error('bad json');
+            const limit = parseInt(obj.limit || obj.historyLimit || historyLimit, 10) || historyLimit;
+            const grp = Array.isArray(obj.group) ? obj.group : [];
+            const prv = obj.private && typeof obj.private === 'object' ? obj.private : {};
+            historyLimit = Math.max(10, Math.min(10000, limit));
+            localStorage.setItem(HISTORY_LIMIT_KEY, String(historyLimit));
+            historyStore = { group: grp.slice(-historyLimit), private: {} };
+            for (const k in prv) historyStore.private[k] = (prv[k]||[]).slice(-historyLimit);
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(historyStore));
+            alert('导入成功，刷新页面后生效（群聊自动渲染，私聊在打开对应会话时渲染）');
+          } catch (err) { alert('导入失败：' + err.message); }
+        };
+        picker.click();
+      }
+    });
+
+    // 私聊模式指示与切换
+    // 动态私聊输入框管理
+    const privateInputsContainer = document.getElementById('privateInputsContainer');
+    function ensurePrivateTab(userId) {
+      const privateTabs = document.getElementById('privateTabs');
+      const boxesPrivate = document.getElementById('chatBoxesPrivate');
+      // 按钮存在则直接返回
+      if ([...privateTabs.children].some(b => b.dataset.tabId === userId)) return;
+      // 创建按钮（带关闭）
+      const btn = document.createElement('button');
+      btn.className = 'btn-sm';
+      btn.dataset.tabId = userId;
+      btn.style.background = '#eee';
+      btn.style.color = '#333';
+      btn.innerHTML = `${userId} <span style="margin-left:6px;">✕</span>`;
+      btn.onclick = (e) => {
+        if (e.target && e.target.tagName === 'SPAN') {
+          // 关闭：移除按钮/聊天框/输入区
+          const box = document.getElementById('chatBox-' + userId);
+          const input = document.getElementById('inputArea-' + userId);
+          if (box) box.remove(); if (input) input.remove(); btn.remove();
+          setActiveTab('group');
+        } else {
+          setActiveTab(userId);
+        }
+      };
+      privateTabs.appendChild(btn);
+      // 创建聊天框
+      const chatBox = document.createElement('div');
+      chatBox.id = 'chatBox-' + userId;
+      chatBox.className = 'chatbox';
+      chatBox.style.display = 'none';
+      boxesPrivate.appendChild(chatBox);
+      // 创建输入区
+      const inputArea = document.createElement('div');
+      inputArea.id = 'inputArea-' + userId;
+      inputArea.className = 'inputArea';
+      inputArea.style.display = 'none';
+      const input = document.createElement('input'); input.type = 'text'; input.placeholder = `对 ${userId} 说点什么...`; input.autocomplete='off'; input.id = 'messageInput-' + userId; input.style.flex='1'; input.style.padding='14px 18px'; input.style.border='1px solid #ccc'; input.style.borderRadius='24px'; input.style.fontSize='16px';
+      const sendBtn = document.createElement('button'); sendBtn.textContent = '发送'; sendBtn.id = 'sendBtn-' + userId;
+      sendBtn.onclick = () => sendMessageTo(userId, input);
+      const fileBtn = document.createElement('button'); fileBtn.textContent = '📎 文件发送'; fileBtn.onclick = () => openFileSendMenuFor(userId);
+      inputArea.appendChild(input); inputArea.appendChild(sendBtn); inputArea.appendChild(fileBtn);
+      boxesPrivate.appendChild(inputArea);
+      // 回车发送
+      input.addEventListener('keypress', (e) => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click(); } });
+    }
+
+    function openPrivateChat(userId) {
+      ensurePrivateTab(userId);
+      setActiveTab(userId);
+      const input = document.getElementById('messageInput-' + userId); input && input.focus();
+      const box = document.getElementById('chatBox-' + userId);
+      if (box) {
+        // 首次打开时渲染本地历史
+        if (!box.dataset.inited) {
+          box.dataset.inited = '1';
+          const list = (historyStore.private[userId] || []).slice(-historyLimit);
+          list.forEach(r => addMessageToUI({ text: r.text, from: r.from, to: r.to, time: r.time, private: true }));
+        }
+        box.scrollTop = box.scrollHeight;
+      }
+    }
+    window.openPrivateChat = openPrivateChat;
+
+    function sendMessageTo(toUserId, inputEl) {
+      const text = (inputEl?.value || '').trim();
+      if (!text || !myUserId) return;
+      fetch(`http://${serviceUrl}/send/private`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message:text, from: myUserId, to: toUserId }) })
+        .then(res => { if (!res.ok) throw new Error('HTTP '+res.status); inputEl.value=''; })
+        .catch(err => { console.error('[send:private:error]', err); alert('发送失败'); });
+    }
 
     // 在线用户下拉刷新（兼容存在与否）
     function refreshTargetUser() {
@@ -1019,7 +1585,7 @@
         if (id === 'menuTargetUser') {
           sel.innerHTML = '<option value="">请选择用户</option>';
         } else {
-          sel.innerHTML = '<option value="">（不指定）</option>';
+          sel.innerHTML = '<option value="">群聊（默认）</option>';
         }
         onlineUsers.forEach(u => {
           const opt = document.createElement('option');
@@ -1030,7 +1596,98 @@
       });
     }
 
+    function renderOnlineUsers() {
+      const listEl = document.getElementById('onlineList');
+      const cntEl = document.getElementById('onlineCount');
+      if (!listEl || !cntEl) return;
+      listEl.innerHTML = '';
+      cntEl.textContent = onlineUsers.length;
+      onlineUsers.forEach(u => {
+        const row = document.createElement('div');
+        row.className = 'item';
+        const idEl = document.createElement('div');
+        idEl.className = 'id';
+        idEl.textContent = u;
+        const ops = document.createElement('div');
+        ops.className = 'ops';
+        const btnChat = document.createElement('button'); btnChat.textContent = '私聊'; btnChat.onclick = () => openPrivateChat(u);
+        const btnConn = document.createElement('button'); btnConn.textContent = '直连'; btnConn.onclick = () => connectToUser(u);
+        const btnCopy = document.createElement('button'); btnCopy.textContent = '复制'; btnCopy.onclick = async () => { try { await navigator.clipboard.writeText(u); btnCopy.textContent='已复制'; setTimeout(()=>btnCopy.textContent='复制',1000);} catch(e){ alert('复制失败'); } };
+        ops.appendChild(btnChat); ops.appendChild(btnConn); ops.appendChild(btnCopy);
+        row.appendChild(idEl); row.appendChild(ops);
+        listEl.appendChild(row);
+      });
+    }
+
+    document.getElementById('refreshUsers').addEventListener('click', () => renderOnlineUsers());
+
+    // 侧边栏收起/展开
+    (function(){
+      const panel = document.getElementById('onlinePanel');
+      const hd = panel.querySelector('.hd');
+      const closeBtn = document.createElement('button');
+      closeBtn.className = 'btn-sm';
+      closeBtn.style.background = '#eee';
+      closeBtn.style.color = '#333';
+      closeBtn.textContent = '关闭面板';
+      closeBtn.onclick = () => {
+        document.getElementById('onlinePanel').style.display = 'none';
+        const icon = document.getElementById('onlineToggle'); if (icon) icon.style.display = 'block';
+      };
+      hd.appendChild(closeBtn);
+      const icon = document.getElementById('onlineToggle');
+      if (icon) icon.onclick = () => { document.getElementById('onlinePanel').style.display = 'block'; icon.style.display = 'none'; };
+      // 默认显示列表
+      document.getElementById('onlineList').style.display = 'block';
+    })();
+
+    // 聊天窗切换
+    (function(){
+      const tabGroup = document.getElementById('tabGroup');
+      const privateTabs = document.getElementById('privateTabs');
+      const boxGroup = document.getElementById('chatBoxGroup');
+      const boxesPrivate = document.getElementById('chatBoxesPrivate');
+
+      function setActiveTab(tabId) {
+        const isGroup = tabId === 'group';
+        // 显示/隐藏群聊
+        boxGroup.style.display = isGroup ? 'flex' : 'none';
+        document.getElementById('inputAreaGroup').style.display = isGroup ? 'flex' : 'none';
+        // 私聊容器
+        boxesPrivate.style.display = isGroup ? 'none' : 'block';
+        document.getElementById('privateInputs').style.display = isGroup ? 'none' : 'flex';
+        // 切换按钮样式
+        tabGroup.style.background = isGroup ? '#0084ff' : '#eee';
+        tabGroup.style.color = isGroup ? '#fff' : '#333';
+        [...privateTabs.children].forEach(btn => {
+          const active = btn.dataset.tabId === tabId;
+          btn.style.background = active ? '#0084ff' : '#eee';
+          btn.style.color = active ? '#fff' : '#333';
+          const box = document.getElementById('chatBox-' + btn.dataset.tabId);
+          const input = document.getElementById('inputArea-' + btn.dataset.tabId);
+          if (box) {
+            box.style.display = active ? 'flex' : 'none';
+            if (active) box.scrollTop = box.scrollHeight;
+          }
+          if (input) {
+            input.style.display = active ? 'flex' : 'none';
+            if (active) {
+              const inp = document.getElementById('messageInput-' + btn.dataset.tabId);
+              inp && inp.focus();
+            }
+          }
+        });
+      }
+      window.setActiveTab = setActiveTab;
+
+      tabGroup.onclick = () => setActiveTab('group');
+      setActiveTab('group');
+    })();
+
     connectWebSocket();
+    // 初始渲染（如果有缓存/延迟广播）
+    renderOnlineUsers();
+
   </script>
 </body>
 </html>

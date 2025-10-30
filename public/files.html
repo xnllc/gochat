@@ -16,7 +16,13 @@
   </style>
 </head>
 <body>
-  <h1>📁 已上传文件（<span id="count">0</span>）</h1>
+  <h1 style="display:flex;align-items:center;gap:12px;justify-content:space-between;">
+    <span>📁 已上传文件（<span id="count">0</span>）</span>
+    <span style="display:flex;gap:8px;">
+      <button id="btnRefresh" title="刷新内存数据">刷新</button>
+      <button id="btnReal" title="从磁盘获取真实数据">获取真实数据</button>
+    </span>
+  </h1>
   <table id="fileTable">
     <thead>
       <tr>
@@ -38,45 +44,71 @@
       else return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     }
 
+    async function render(files) {
+      const tbody = document.querySelector('#fileTable tbody');
+      tbody.innerHTML = '';
+      files.forEach(f => {
+        const tr = document.createElement('tr');
+        const time = new Date(f.uploaded).toLocaleString('zh-CN');
+        tr.innerHTML = `
+          <td><a href="http://${serviceUrl}${f.url}" target="_blank">${f.name}</a></td>
+          <td class="size">${formatSize(f.size)}</td>
+          <td class="time">${time}</td>
+          <td class="actions">
+            <a href="#" onclick="deleteFile('${f.savedName}'); return false;">🗑️ 删除</a>
+            &nbsp;|
+            <a href="#" onclick="deleteRealFile('${f.savedName}'); return false;">🗑️ 真实删除</a>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      document.getElementById('count').textContent = files.length;
+    }
+
     async function loadFiles() {
       try {
         const res = await fetch(`http://${serviceUrl}/api/files`);
         const files = await res.json();
-        const tbody = document.querySelector('#fileTable tbody');
-        tbody.innerHTML = '';
-
-        files.forEach(f => {
-          const tr = document.createElement('tr');
-          const time = new Date(f.uploaded).toLocaleString('zh-CN');
-          tr.innerHTML = `
-            <td><a href="http://${serviceUrl}${f.url}" target="_blank">${f.name}</a></td>
-            <td class="size">${formatSize(f.size)}</td>
-            <td class="time">${time}</td>
-            <td class="actions">
-              <a href="#" onclick="deleteFile('${f.savedName}'); return false;">🗑️ 删除</a>
-            </td>
-          `;
-          tbody.appendChild(tr);
-        });
-
-        document.getElementById('count').textContent = files.length;
+        await render(files);
       } catch (e) {
         console.error(e);
         alert('加载文件列表失败');
       }
     }
 
+    async function loadRealFiles() {
+      try {
+        const res = await fetch(`http://${serviceUrl}/api/files/all`);
+        const files = await res.json();
+        await render(files);
+      } catch (e) {
+        console.error(e);
+        alert('获取真实数据失败');
+      }
+    }
+
     async function deleteFile(savedName) {
       if (!confirm('确定删除此文件？删除后不可恢复。')) return;
       try {
-        await fetch(`http://${serviceUrl}/api/files/${savedName}`, {
-          method: 'DELETE'
-        });
-        loadFiles();
+        await fetch(`http://${serviceUrl}/api/files/${savedName}`, { method: 'DELETE' });
+        loadRealFiles();
       } catch (e) {
         alert('删除失败');
       }
     }
+
+    async function deleteRealFile(savedName) {
+      if (!confirm('将从磁盘真实删除该文件，且不依赖内存索引。确定继续？')) return;
+      try {
+        await fetch(`http://${serviceUrl}/api/files/all/${savedName}`, { method: 'DELETE' });
+        loadRealFiles();
+      } catch (e) {
+        alert('真实删除失败');
+      }
+    }
+
+    document.getElementById('btnRefresh').addEventListener('click', loadFiles);
+    document.getElementById('btnReal').addEventListener('click', loadRealFiles);
 
     loadFiles();
   </script>
