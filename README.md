@@ -19,8 +19,8 @@
 ## 示例截图
 
 
-<img src="./public/img1.png" alt="示例图 1" style="width:100%; max-width: 600px;">
-<img src="./public/img2.png" alt="示例图 2" style="width:100%; max-width: 600px;">
+<img src="./public/img1.png" alt="示例图 1" style="width:100%; max-width: 300px;">
+<img src="./public/img2.png" alt="示例图 2" style="width:100%; max-width: 300px;">
 
 
 
