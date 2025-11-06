@@ -1,0 +1,46 @@
+name: Go Multi-Platform Build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Go binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ 拉取代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2️⃣ 设置 Go 环境（修改为你的 Go 版本）
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      # 3️⃣ 构建多平台版本
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+
+          echo "🚀 构建 Windows 版本"
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o dist/go-chat.exe main.go
+
+          echo "🚀 构建 macOS Intel 版本"
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -o dist/go-chat-mac-intel main.go
+
+          echo "🚀 构建 macOS ARM 版本"
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o dist/go-chat-mac-arm main.go
+
+          echo "🚀 构建 Linux 版本"
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/go-chat-linux main.go
+
+      # 4️⃣ 上传构建产物到 GitHub（可在 Actions 页面下载）
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-chat-binaries
+          path: dist/
